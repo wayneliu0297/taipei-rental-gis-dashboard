@@ -25,8 +25,9 @@ on a **SQLite** backend.
 
 - **Interactive Folium map** with Airbnb-style **price-pill markers** (white →
   black when selected), marker clustering, and a clean CartoDB Positron basemap.
-- **Taipei MRT network overlay** drawn in the official line colours (Tamsui–Xinyi,
-  Songshan–Xindian, Zhonghe–Xinlu, Bannan, Wenhu).
+- **Taipei MRT network overlay** — all lines in their official colours
+  (Tamsui–Xinyi, Songshan–Xindian, Zhonghe–Xinlu, Bannan, Wenhu) plus **111
+  station markers** (hover for the station name).
 - **Pinned map, scrollable listings** — the map stays in view while the property
   cards scroll in their own pane (Airbnb desktop layout).
 - **220 synthetic listings** across **14 districts** of Taipei City & New Taipei

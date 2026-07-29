@@ -243,7 +243,8 @@ with col_map:
 
     fmap = folium.Map(location=center, zoom_start=zoom, tiles=config.MAP_TILES,
                       control_scale=True)
-    mrt.add_mrt_layer(fmap)  # Taipei MRT network (under the listing markers)
+    mrt.add_mrt_layer(fmap)     # Taipei MRT lines (under the listing markers)
+    mrt.add_mrt_stations(fmap)  # station dots on top of the lines
     cluster = MarkerCluster(disableClusteringAtZoom=15).add_to(fmap)
 
     for _, row in df.iterrows():

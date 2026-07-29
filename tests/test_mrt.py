@@ -32,3 +32,13 @@ def test_legend_unique_ordered():
     names = [n for n, _ in leg]
     assert len(names) == len(set(names))  # unique
     assert EXPECTED_LINES <= set(names)
+
+
+def test_stations_present_and_within_taipei():
+    stations = mrt.mrt_stations()
+    assert len(stations) >= 100
+    for s in stations:
+        assert {"name", "lat", "lon"} <= set(s)
+        assert s["name"]
+        assert TAIPEI_BBOX["lat"][0] < s["lat"] < TAIPEI_BBOX["lat"][1]
+        assert TAIPEI_BBOX["lon"][0] < s["lon"] < TAIPEI_BBOX["lon"][1]
