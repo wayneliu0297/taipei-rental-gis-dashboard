@@ -1,0 +1,22 @@
+# --- Private / non-public data (NEVER commit) ---
+# Reference dataset used only offline to calibrate the synthetic generator.
+*.xlsx
+*.xls
+
+# Generated SQLite DB (rebuilt automatically on first run)
+data/*.db
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+env/
+
+# --- OS / editor ---
+.DS_Store
+.ipynb_checkpoints/
+.vscode/
+.idea/
