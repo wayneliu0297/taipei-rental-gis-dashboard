@@ -50,6 +50,7 @@ DISTRICT_PROFILE = {
 }
 
 CITIES = ["Taipei City", "New Taipei City"]
+CITY_ZH = {"Taipei City": "台北市", "New Taipei City": "新北市"}
 
 # ---------------------------------------------------------------------------
 # Room types

@@ -182,19 +182,17 @@ st.sidebar.markdown("## 🔎 Filters")
 # --- City (checkboxes) ---
 st.sidebar.markdown("**City**")
 sel_cities = [c for c in config.CITIES
-              if st.sidebar.checkbox(c, value=True, key=f"city_{c}")]
+              if st.sidebar.checkbox(f"{c} ({config.CITY_ZH[c]})", value=True, key=f"city_{c}")]
 
-# --- District (checkboxes, 2 columns, grouped under the selected cities) ---
+# --- District (checkboxes, single column so the English + Chinese label fits) ---
 st.sidebar.markdown("**District**")
 sel_districts = []
-_dcols = st.sidebar.columns(2)
-_i = 0
 for d in config.districts():
     if config.DISTRICT_PROFILE[d]["city"] not in sel_cities:
         continue
-    if _dcols[_i % 2].checkbox(d, value=True, key=f"dist_{d}"):
+    label = f"{d} ({config.DISTRICT_PROFILE[d]['name_zh']})"
+    if st.sidebar.checkbox(label, value=True, key=f"dist_{d}"):
         sel_districts.append(d)
-    _i += 1
 
 pmin, pmax = _price_bounds()
 price_range = st.sidebar.slider("Monthly rent (NT$)", min_value=pmin, max_value=pmax,
