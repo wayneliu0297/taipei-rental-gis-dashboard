@@ -19,7 +19,7 @@ except ImportError:  # pragma: no cover - direct execution fallback
     import config
 
 SEED = 42
-N_LISTINGS = 1000
+N_LISTINGS = 500
 
 FIRST_NAMES = ["Chen", "Lin", "Huang", "Chang", "Lee", "Wang", "Wu", "Liu", "Tsai", "Yang", "Cheng", "Hsu"]
 

@@ -160,13 +160,17 @@ st.markdown(
         border-top-color:#111827; border-radius:50%; animation:mspin .8s linear infinite; }
     @keyframes mspin { to { transform:rotate(360deg); } }
 
-    /* compact sidebar so every filter is visible at a glance */
+    /* compact sidebar so every filter is visible without scrolling */
     section[data-testid="stSidebar"] .stMarkdown p,
     section[data-testid="stSidebar"] label,
-    section[data-testid="stSidebar"] .stRadio div { font-size:.76rem; }
-    section[data-testid="stSidebar"] h2 { font-size:1rem; margin-bottom:.2rem; }
-    section[data-testid="stSidebar"] [data-testid="stVerticalBlock"] { gap:.25rem; }
+    section[data-testid="stSidebar"] .stRadio div { font-size:.75rem; }
+    section[data-testid="stSidebar"] .block-container { padding-top:2.2rem; }
+    section[data-testid="stSidebar"] h2 { font-size:.95rem; margin:0 0 .1rem; }
+    section[data-testid="stSidebar"] .stMarkdown p { margin:0; }
+    section[data-testid="stSidebar"] [data-testid="stVerticalBlock"] { gap:.12rem; }
+    section[data-testid="stSidebar"] .stCheckbox { min-height:0; margin:0; }
     section[data-testid="stSidebar"] [data-testid="stCaptionContainer"] p { font-size:.72rem; }
+    section[data-testid="stSidebar"] .stSlider { padding-bottom:.2rem; }
 
     /* the invisible JS-injector component takes no space */
     iframe[title="st.iframe"] { display:block; }
@@ -216,15 +220,19 @@ st.sidebar.markdown("**City**")
 sel_cities = [c for c in config.CITIES
               if st.sidebar.checkbox(f"{c} ({config.CITY_ZH[c]})", value=True, key=f"city_{c}")]
 
-# --- District (checkboxes, single column so the English + Chinese label fits) ---
-st.sidebar.markdown("**District**")
+# --- District (checkboxes, compact 2-column zh grid so it fits without
+#     scrolling; the English district name still shows on the map/cards/modal) ---
+st.sidebar.markdown("**District** (區)")
 sel_districts = []
+_dcols2 = st.sidebar.columns(2)
+_di = 0
 for d in config.districts():
     if config.DISTRICT_PROFILE[d]["city"] not in sel_cities:
         continue
-    label = f"{d} ({config.DISTRICT_PROFILE[d]['name_zh']})"
-    if st.sidebar.checkbox(label, value=True, key=f"dist_{d}"):
+    if _dcols2[_di % 2].checkbox(config.DISTRICT_PROFILE[d]["name_zh"], value=True,
+                                 key=f"dist_{d}", help=d):
         sel_districts.append(d)
+    _di += 1
 
 pmin, pmax = _price_bounds()
 price_range = st.sidebar.slider("Monthly rent (NT$)", min_value=pmin, max_value=pmax,
@@ -237,27 +245,25 @@ for _j, _r in enumerate(config.ROOM_TYPES.keys()):
     if _rcols[_j % 3].checkbox(_r, value=True, key=f"room_{_r}"):
         sel_rooms.append(_r)
 
-smin, smax = _size_bounds()
-size_range = st.sidebar.slider("Size (ping)", min_value=float(smin), max_value=float(smax),
-                               value=(float(smin), float(smax)), step=1.0)
+with st.sidebar.expander("More filters"):
+    smin, smax = _size_bounds()
+    size_range = st.slider("Size (ping)", min_value=float(smin), max_value=float(smax),
+                           value=(float(smin), float(smax)), step=1.0)
+    max_mrt = st.slider("Max walk to MRT (min)", min_value=1, max_value=20, value=20)
 
-max_mrt = st.sidebar.slider("Max walk to MRT (min)", min_value=1, max_value=20, value=20)
-
-st.sidebar.markdown("---")
-status_legend = "**Map colour — status**  \n" + "  \n".join(
-    f"<span class='dot' style='background:{config.STATUS_COLOR[s]}'></span>{s} ({config.STATUS_ZH[s]})"
-    for s in ["Rented", "Available"]
-)
-st.sidebar.caption(status_legend, unsafe_allow_html=True)
-
-mrt_legend = "**MRT lines**  \n" + "  \n".join(
-    f"<span class='dot' style='background:{color}'></span>{name}"
-    for name, color in mrt.legend()
-)
-st.sidebar.caption(mrt_legend, unsafe_allow_html=True)
-
-st.sidebar.caption("⚠️ All data is randomly generated for this demo. Photos are royalty-free "
-                   "stock images — no real listings or company data. MRT geometry: open data.")
+with st.sidebar.expander("🎨 Legend & data notes"):
+    st.caption(
+        "**Map colour — status**  \n" + "  \n".join(
+            f"<span class='dot' style='background:{config.STATUS_COLOR[s]}'></span>{s} ({config.STATUS_ZH[s]})"
+            for s in ["Rented", "Available"]),
+        unsafe_allow_html=True)
+    st.caption(
+        "**MRT lines**  \n" + "  \n".join(
+            f"<span class='dot' style='background:{color}'></span>{name}"
+            for name, color in mrt.legend()),
+        unsafe_allow_html=True)
+    st.caption("⚠️ All data is randomly generated for this demo. Photos are royalty-free "
+               "stock images — no real listings or company data. MRT geometry: open data.")
 
 # ---------------------------------------------------------------------------
 # Query
