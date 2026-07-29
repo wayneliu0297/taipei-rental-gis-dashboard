@@ -40,18 +40,29 @@ def legend() -> list:
     return list(seen.items())
 
 
-def add_mrt_layer(fmap, weight: float = 3.2, opacity: float = 0.7):
-    """Draw the MRT lines onto a Folium map (below the listing markers)."""
+def _thin(path, step=2):
+    """Keep every ``step``-th point (plus the last) to cut the payload size."""
+    if len(path) <= 3:
+        return path
+    kept = path[::step]
+    if kept[-1] != path[-1]:
+        kept.append(path[-1])
+    return kept
+
+
+def add_mrt_layer(fmap, weight: float = 3.0, opacity: float = 0.75):
+    """Draw the MRT lines onto a Folium map (below the listing markers).
+
+    Lines are point-thinned so the (re)drawn payload stays small — the full
+    geometry is ~8k points, which made every Streamlit rerun sluggish.
+    """
     import folium
 
     for seg in mrt_segments():
         for path in seg["paths"]:
             if len(path) < 2:
                 continue
-            # subtle white casing for a cleaner "metro map" look at crossings
-            folium.PolyLine(path, color="#ffffff", weight=weight + 1.8,
-                            opacity=0.55).add_to(fmap)
-            folium.PolyLine(path, color=seg["color"], weight=weight,
+            folium.PolyLine(_thin(path), color=seg["color"], weight=weight,
                             opacity=opacity, tooltip=f"{seg['line']} Line").add_to(fmap)
     return fmap
 

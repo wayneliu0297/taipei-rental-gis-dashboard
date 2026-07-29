@@ -96,10 +96,10 @@ st.markdown(
     /* ---- filter chips -> black ---- */
     span[data-baseweb="tag"] { background-color:#111827 !important; }
 
-    /* ---- buttons -> minimal ---- */
-    .stButton button { border-radius:10px; border:1px solid #E5E7EB; color:#111827;
+    /* ---- buttons -> full-width card CTA ---- */
+    .stButton button { width:100%; border-radius:10px; border:1px solid #111827; color:#111827;
         font-weight:600; font-size:.82rem; background:#fff; }
-    .stButton button:hover { border-color:#111827; color:#111827; background:#FAFAFA; }
+    .stButton button:hover { background:#111827; color:#fff; border-color:#111827; }
 
     /* ---- keep the map pinned while only the listing column scrolls ---- */
     /* map column (the one holding the Folium iframe) */
@@ -267,7 +267,7 @@ st.markdown("")
 # ---------------------------------------------------------------------------
 # Map markers — Airbnb-style price pills
 # ---------------------------------------------------------------------------
-def price_pin(price: int, band_color: str, is_sel: bool) -> folium.DivIcon:
+def price_pin(price: int, band_color: str, is_sel: bool = False) -> folium.DivIcon:
     k = f"{price/1000:.0f}K"
     if is_sel:
         style = ("background:#111827;color:#fff;border-color:#111827;"
@@ -321,31 +321,32 @@ col_map, col_list = st.columns([2.05, 1])
 
 with col_map:
     view = st.session_state.view
+    # prefer_canvas renders the MRT lines + 111 station dots on a single canvas
+    # instead of hundreds of SVG nodes — far cheaper to (re)draw on each rerun.
     fmap = folium.Map(location=view["center"], zoom_start=view["zoom"],
-                      tiles=config.MAP_TILES, control_scale=True)
+                      tiles=config.MAP_TILES, control_scale=True, prefer_canvas=True)
     mrt.add_mrt_layer(fmap)     # Taipei MRT lines (under the listing markers)
     mrt.add_mrt_stations(fmap)  # station dots on top of the lines
     cluster = MarkerCluster(disableClusteringAtZoom=15).add_to(fmap)
-
     for _, row in df.iterrows():
-        is_sel = st.session_state.selected_id == row["id"]
-        bcolor = config.band_color(row["price_band"])
         folium.Marker(
             location=[row["lat"], row["lon"]],
-            icon=price_pin(row["price"], bcolor, is_sel),
+            icon=price_pin(row["price"], config.band_color(row["price_band"])),
             tooltip=f"{row['room_type']} · NT$ {row['price']:,} · {row['district']}",
         ).add_to(cluster)
-
     map_state = st_folium(
         fmap, width=None, height=630, key="map",
         returned_objects=["bounds", "center", "zoom", "last_object_clicked"],
     )
 
-# Keep the map where the user left it across reruns (so panning doesn't reset)
+# Keep the map where the user left it; only store when it MEANINGFULLY moved so
+# float jitter doesn't trigger an extra rerun/redraw.
 if map_state:
     c, z = map_state.get("center"), map_state.get("zoom")
     if c and z:
-        st.session_state.view = {"center": [c["lat"], c["lng"]], "zoom": z}
+        new_view = {"center": [round(c["lat"], 4), round(c["lng"], 4)], "zoom": z}
+        if new_view != st.session_state.view:
+            st.session_state.view = new_view
 
 # Click a marker -> open the modal (dedupe the persisted last_object_clicked)
 lc = map_state.get("last_object_clicked") if map_state else None
