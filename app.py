@@ -6,17 +6,24 @@ An interactive, Airbnb-style map of (synthetic) rental listings across Greater
 Taipei (Taipei City + New Taipei City), built with Streamlit + Folium on a
 SQLite backend.
 
-Features
---------
-* Folium map with Airbnb-style price-pill markers (clustered, clickable)
-* Sidebar filters: city, district, monthly rent, room type, size, MRT distance
-* Photo property cards linked to the map
-* Click a card (or a marker) to "fly to" and highlight that listing
-* Live KPI header that reacts to the filters
-* 100 % generated fake data + royalty-free stock photos — no real listings
+Architecture note
+-----------------
+Map interactions are deliberately decoupled from Streamlit's rerun loop:
+
+* ``st_folium`` watches only ``all_drawings`` (which never changes here), so
+  panning / zooming NEVER triggers a Python rerun — the map is pure Leaflet
+  and stays butter-smooth.
+* A tiny ``components.html`` injector receives the filtered listings as JSON
+  and renders the "stays in view" cards **client-side** on every ``moveend`` /
+  ``zoomend``, opens the listing modal (from cards or map pins), and persists
+  the view in ``sessionStorage`` so sidebar-filter reruns restore it.
+* Only sidebar filter changes rerun Python (they re-query SQLite and rebuild
+  the marker set — the one case where a rerun is actually needed).
 
 Run:  streamlit run app.py
 """
+
+import json
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -31,92 +38,86 @@ from src import config, database, generate_data, media, mrt
 if not config.DB_PATH.exists():
     generate_data.build_database()
 
-# ---------------------------------------------------------------------------
-# Version-compatibility helpers (target Streamlit 1.12 .. latest)
-# ---------------------------------------------------------------------------
-cache_data = getattr(st, "cache_data", st.cache)
-
-
-def _rerun():
-    if hasattr(st, "rerun"):
-        st.rerun()
-    elif hasattr(st, "experimental_rerun"):
-        st.experimental_rerun()
-
+cache_data = getattr(st, "cache_data", st.cache)  # Streamlit 1.12 .. latest
 
 st.set_page_config(page_title="Taipei Rental GIS Dashboard", page_icon="🏙️", layout="wide")
 
+CARD_CAP = 24  # cards rendered in the right-hand column at any one time
+
 # ---------------------------------------------------------------------------
-# Styling — minimal black & white, Airbnb-style cards
+# Design system — ink navy + Inter, Airbnb-style surfaces
 # ---------------------------------------------------------------------------
 st.markdown(
     """
     <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=Noto+Sans+TC:wght@400;500;700&display=swap');
+
+    html, body, [class*="css"] {
+        font-family: 'Inter', 'Noto Sans TC', -apple-system, BlinkMacSystemFont, sans-serif;
+    }
     .block-container { padding-top: 1.1rem; padding-bottom: 1rem; max-width: 1500px; }
     header[data-testid="stHeader"] { background: transparent; }
 
     /* ---- top brand bar ---- */
     .topbar { display:flex; justify-content:space-between; align-items:center;
-        padding:2px 2px 12px; border-bottom:1px solid #ECECEC; margin-bottom:14px; }
-    .brand { font-size:1.35rem; font-weight:800; color:#111827; letter-spacing:-.01em; }
-    .brand-mark { display:inline-block; background:#111827; color:#fff; border-radius:8px;
-        padding:1px 8px; margin-right:8px; font-weight:900; }
-    .brand-tag { color:#9CA3AF; font-weight:600; }
-    .brand-right { font-size:.8rem; color:#6B7280; font-weight:600; text-align:right; }
-    .brand-right b { color:#111827; }
+        padding:2px 2px 13px; border-bottom:1px solid #EAECF0; margin-bottom:14px; }
+    .brand { display:flex; align-items:center; gap:11px; }
+    .brand-name { font-size:1.3rem; font-weight:800; color:#0F172A; letter-spacing:-.02em; }
+    .brand-name .thin { color:#94A3B8; font-weight:600; }
+    .brand-sub { font-size:.68rem; color:#94A3B8; font-weight:600; letter-spacing:.06em;
+        text-transform:uppercase; margin-top:1px; }
+    .brand-right { font-size:.78rem; color:#64748B; font-weight:600; text-align:right; line-height:1.45; }
+    .brand-right b { color:#0F172A; }
 
-    /* ---- KPI metrics ---- */
-    div[data-testid="stMetricValue"] { font-size:1.25rem; font-weight:700; }
-    div[data-testid="stMetricLabel"] { color:#6B7280; }
+    /* ---- KPI tiles ---- */
+    div[data-testid="metric-container"], div[data-testid="stMetric"] {
+        background:#F8FAFC; border:1px solid #EEF2F7; border-radius:14px;
+        padding:10px 16px 12px; }
+    div[data-testid="stMetricValue"] { font-size:1.22rem; font-weight:800; color:#0F172A; }
+    div[data-testid="stMetricLabel"] { color:#64748B; }
 
-    /* ---- Airbnb-style property cards ---- */
+    /* ---- Airbnb-style property cards (generated client-side) ---- */
     .property-card { border-radius:16px; background:#fff; border:1px solid #ECECEC;
-        overflow:hidden; margin-bottom:6px;
-        box-shadow:0 1px 2px rgba(0,0,0,.04), 0 8px 20px rgba(0,0,0,.05);
+        overflow:hidden; margin-bottom:10px; cursor:pointer;
+        box-shadow:0 1px 2px rgba(15,23,42,.04), 0 8px 20px rgba(15,23,42,.05);
         transition:transform .12s ease, box-shadow .12s ease; }
-    .property-card:hover { transform:translateY(-2px); box-shadow:0 10px 26px rgba(0,0,0,.10); }
-    .property-card.selected { border:1.5px solid #111827; box-shadow:0 10px 26px rgba(0,0,0,.16); }
+    .property-card:hover { transform:translateY(-2px); box-shadow:0 10px 26px rgba(15,23,42,.12); }
     .pc-photo { height:150px; background-size:cover; background-position:center;
-        position:relative; background-color:#F3F4F6; }
-    .pc-band { position:absolute; top:10px; left:10px; color:#fff; font-size:.66rem;
+        position:relative; background-color:#F1F5F9; }
+    .pc-band { position:absolute; top:10px; left:10px; color:#fff; font-size:.64rem;
         font-weight:700; padding:3px 9px; border-radius:20px; letter-spacing:.02em;
         box-shadow:0 1px 3px rgba(0,0,0,.25); }
     .pc-heart { position:absolute; top:8px; right:10px; color:#fff; font-size:1.05rem;
         text-shadow:0 1px 3px rgba(0,0,0,.4); }
     .pc-body { padding:11px 14px 13px; }
     .pc-row1 { display:flex; justify-content:space-between; align-items:baseline; gap:8px; }
-    .pc-title { font-weight:650; font-size:.94rem; color:#111827; }
-    .pc-price { font-weight:800; font-size:1.02rem; color:#111827; white-space:nowrap; }
-    .pc-sub { color:#9CA3AF; font-size:.72rem; margin-top:1px; }
-    .pc-addr { color:#717171; font-size:.75rem; margin:6px 0 8px; }
-    .badge { background:#F5F5F5; color:#374151; padding:2px 8px; border-radius:6px;
-        font-size:.68rem; font-weight:500; margin-right:5px; border:1px solid #EDEDED;
+    .pc-title { font-weight:700; font-size:.93rem; color:#0F172A; }
+    .pc-price { font-weight:800; font-size:1.0rem; color:#0F172A; white-space:nowrap; }
+    .pc-sub { color:#94A3B8; font-size:.72rem; margin-top:1px; }
+    .pc-addr { color:#64748B; font-size:.74rem; margin:6px 0 8px; }
+    .badge { background:#F5F6F8; color:#334155; padding:2px 8px; border-radius:6px;
+        font-size:.67rem; font-weight:500; margin-right:5px; border:1px solid #ECEFF3;
         display:inline-block; margin-bottom:4px; }
     .dot { height:9px; width:9px; border-radius:50%; display:inline-block; margin-right:6px; }
 
-    /* ---- filter chips -> black ---- */
-    span[data-baseweb="tag"] { background-color:#111827 !important; }
-
-    /* ---- buttons -> full-width card CTA ---- */
-    .stButton button { width:100%; border-radius:10px; border:1px solid #111827; color:#111827;
-        font-weight:600; font-size:.82rem; background:#fff; }
-    .stButton button:hover { background:#111827; color:#fff; border-color:#111827; }
+    /* ---- right column: header + client-rendered card list ---- */
+    .stays-head { font-size:1.12rem; font-weight:800; color:#0F172A; margin:0 0 2px; }
+    .stays-sub { font-size:.7rem; color:#94A3B8; margin-bottom:10px; }
+    #cards-note { font-size:.72rem; color:#94A3B8; margin:2px 0 10px; }
+    .cards-empty { background:#F8FAFC; border:1px solid #EEF2F7; border-radius:12px;
+        padding:16px; font-size:.84rem; color:#475569; }
 
     /* ---- keep the map pinned while only the listing column scrolls ---- */
-    /* map column (the one holding the Folium iframe) */
     div[data-testid="column"]:has(iframe) {
-        position: sticky; top: 0.5rem; align-self: flex-start; z-index: 5;
-    }
-    /* listing column = the column right after the map column */
+        position: sticky; top: 0.5rem; align-self: flex-start; z-index: 5; }
     div[data-testid="column"]:has(iframe) + div[data-testid="column"] {
-        max-height: 86vh; overflow-y: auto; padding-right: 8px;
-    }
+        max-height: 86vh; overflow-y: auto; padding-right: 8px; }
     div[data-testid="column"]:has(iframe) + div[data-testid="column"]::-webkit-scrollbar { width: 7px; }
     div[data-testid="column"]:has(iframe) + div[data-testid="column"]::-webkit-scrollbar-thumb {
-        background: #D1D5DB; border-radius: 4px; }
+        background: #D8DEE6; border-radius: 4px; }
 
     /* ---- centered listing modal (z above the sidebar @ 999991) ---- */
-    .modal-backdrop { display:none; position:fixed; inset:0; background:rgba(17,24,39,.55);
+    .modal-backdrop { display:none; position:fixed; inset:0; background:rgba(15,23,42,.55);
         z-index:999992; }
     .listing-modal { display:none; position:fixed; top:50%; left:50%;
         transform:translate(-50%,-50%);
@@ -124,53 +125,47 @@ st.markdown(
         border-radius:20px; box-shadow:0 24px 70px rgba(0,0,0,.42); z-index:999993; }
     .listing-modal.lm-open { display:block; }
     .modal-close-x { position:absolute; top:12px; right:14px; width:34px; height:34px;
-        border-radius:50%; background:rgba(255,255,255,.94); color:#111827; cursor:pointer;
+        border-radius:50%; background:rgba(255,255,255,.94); color:#0F172A; cursor:pointer;
         display:flex; align-items:center; justify-content:center; font-weight:700;
         font-size:.95rem; box-shadow:0 2px 10px rgba(0,0,0,.3); z-index:2; }
     .modal-photo { height:230px; background-size:cover; background-position:center;
-        background-color:#EEE; border-radius:20px 20px 0 0; }
-    .modal-body { padding:15px 20px 20px; }
-    .modal-head { display:flex; justify-content:space-between; align-items:flex-start; gap:10px; }
-    .modal-title { font-weight:700; font-size:1.12rem; color:#111827; line-height:1.25; }
-    .modal-zh { color:#9CA3AF; font-size:.74rem; font-weight:500; }
-    .modal-addr { color:#6B7280; font-size:.8rem; margin-top:3px; }
-    .modal-price { font-weight:800; font-size:1.2rem; color:#111827; white-space:nowrap; text-align:right; }
-    .modal-permo { font-size:.64rem; color:#9CA3AF; font-weight:500; }
-    .modal-stats { display:flex; gap:8px; margin:14px 0; }
-    .modal-stats > div { flex:1; background:#F7F7F8; border-radius:12px; padding:8px 4px; text-align:center; }
-    .modal-stats b { display:block; font-size:.92rem; color:#111827; }
-    .modal-stats span { font-size:.64rem; color:#9CA3AF; }
-    .modal-grid { display:grid; grid-template-columns:1fr 1fr; gap:9px 16px; font-size:.82rem; color:#374151; }
-    .modal-grid > div span { display:block; color:#9CA3AF; font-size:.66rem;
-        text-transform:uppercase; letter-spacing:.03em; }
-    .modal-desc { margin-top:14px; font-size:.82rem; color:#4B5563; line-height:1.5; }
-    .modal-contact { margin-top:8px; font-size:.72rem; color:#9CA3AF; }
+        background-color:#EEF1F5; border-radius:20px 20px 0 0; position:relative; }
     .modal-status { position:absolute; top:12px; left:14px; color:#fff; font-size:.68rem;
         font-weight:700; padding:3px 11px; border-radius:20px; box-shadow:0 1px 4px rgba(0,0,0,.3); }
+    .modal-body { padding:15px 20px 20px; }
+    .modal-head { display:flex; justify-content:space-between; align-items:flex-start; gap:10px; }
+    .modal-title { font-weight:800; font-size:1.1rem; color:#0F172A; line-height:1.25; }
+    .modal-zh { color:#94A3B8; font-size:.74rem; font-weight:500; }
+    .modal-addr { color:#64748B; font-size:.8rem; margin-top:3px; }
+    .modal-price { font-weight:800; font-size:1.2rem; color:#0F172A; white-space:nowrap; text-align:right; }
+    .modal-permo { font-size:.64rem; color:#94A3B8; font-weight:500; }
+    .modal-stats { display:flex; gap:8px; margin:14px 0; }
+    .modal-stats > div { flex:1; background:#F6F7F9; border-radius:12px; padding:8px 4px; text-align:center; }
+    .modal-stats b { display:block; font-size:.92rem; color:#0F172A; }
+    .modal-stats span { font-size:.64rem; color:#94A3B8; }
+    .modal-grid { display:grid; grid-template-columns:1fr 1fr; gap:9px 16px; font-size:.82rem; color:#334155; }
+    .modal-grid > div span { display:block; color:#94A3B8; font-size:.66rem;
+        text-transform:uppercase; letter-spacing:.03em; }
+    .modal-desc { margin-top:14px; font-size:.82rem; color:#475569; line-height:1.55; }
+    .modal-contact { margin-top:8px; font-size:.72rem; color:#94A3B8; }
 
-    /* map loading spinner — shown while a zoom/pan rerun is in flight.
-       Lift its element-container above the map iframe (sibling containers
-       otherwise stack the later iframe on top). */
-    .element-container:has(#map-spinner) { position:relative; z-index:600; }
-    #map-spinner { display:none; position:absolute; top:0; left:0; right:0; height:630px;
-        align-items:center; justify-content:center; z-index:600;
-        background:rgba(255,255,255,.45); pointer-events:none; border-radius:8px; }
-    #map-spinner.on { display:flex; }
-    .map-spinner-dot { width:46px; height:46px; border:5px solid rgba(17,24,39,.15);
-        border-top-color:#111827; border-radius:50%; animation:mspin .8s linear infinite; }
-    @keyframes mspin { to { transform:rotate(360deg); } }
-
-    /* compact sidebar so every filter is visible without scrolling */
-    section[data-testid="stSidebar"] .stMarkdown p,
+    /* ---- sidebar: clean design system, everything at a glance ---- */
+    section[data-testid="stSidebar"] { min-width:330px; }
+    section[data-testid="stSidebar"] .block-container { padding:2.3rem 1.05rem 1.2rem; }
+    section[data-testid="stSidebar"] [data-testid="stVerticalBlock"] { gap:.3rem; }
+    .sb-title { font-size:1.05rem; font-weight:800; color:#0F172A; letter-spacing:-.01em; }
+    .sb-h { font-size:.63rem; font-weight:700; letter-spacing:.1em; text-transform:uppercase;
+        color:#94A3B8; margin:.85rem 0 .35rem; line-height:1.3; }
+    section[data-testid="stSidebar"] [data-testid="stHorizontalBlock"] { gap:.5rem; margin-top:.05rem; }
     section[data-testid="stSidebar"] label,
-    section[data-testid="stSidebar"] .stRadio div { font-size:.75rem; }
-    section[data-testid="stSidebar"] .block-container { padding-top:2.2rem; }
-    section[data-testid="stSidebar"] h2 { font-size:.95rem; margin:0 0 .1rem; }
-    section[data-testid="stSidebar"] .stMarkdown p { margin:0; }
-    section[data-testid="stSidebar"] [data-testid="stVerticalBlock"] { gap:.12rem; }
-    section[data-testid="stSidebar"] .stCheckbox { min-height:0; margin:0; }
-    section[data-testid="stSidebar"] [data-testid="stCaptionContainer"] p { font-size:.72rem; }
-    section[data-testid="stSidebar"] .stSlider { padding-bottom:.2rem; }
+    section[data-testid="stSidebar"] .stRadio div,
+    section[data-testid="stSidebar"] .stMarkdown p { font-size:.78rem; }
+    section[data-testid="stSidebar"] label { white-space:nowrap; }
+    section[data-testid="stSidebar"] .stCheckbox { margin-bottom:.04rem; }
+    section[data-testid="stSidebar"] div[role="radiogroup"] { flex-direction:row; gap:1.4rem; }
+    section[data-testid="stSidebar"] .stSlider { padding-bottom:.4rem; }
+    section[data-testid="stSidebar"] [data-testid="stCaptionContainer"] p { font-size:.7rem; }
+    section[data-testid="stSidebar"] .streamlit-expanderHeader { font-size:.75rem; }
 
     /* the invisible JS-injector component takes no space */
     iframe[title="st.iframe"] { display:block; }
@@ -181,9 +176,6 @@ st.markdown(
 
 # Inject the (once-embedded) photo background-image classes
 st.markdown(media.photo_css(), unsafe_allow_html=True)
-
-st.session_state.setdefault("view", {"center": list(config.MAP_CENTER),
-                                     "zoom": config.DEFAULT_ZOOM})
 
 
 @cache_data
@@ -197,70 +189,64 @@ def _size_bounds():
 
 
 # ---------------------------------------------------------------------------
-# Sidebar filters
+# Sidebar — every control visible at a glance
 # ---------------------------------------------------------------------------
-st.sidebar.markdown("## 🔎 Filters")
+sb = st.sidebar
+sb.markdown("<div class='sb-title'>Filters 篩選</div>", unsafe_allow_html=True)
 
-# --- View mode: what a renter sees vs. internal management view ---
-view_mode = st.sidebar.radio(
-    "👁 View mode", ["Tenant", "Company"],
-    help="Tenant = what renters see. Company = adds internal management info "
-         "(owner-contract time left).",
-)
+sb.markdown("<div class='sb-h'>View mode 檢視模式</div>", unsafe_allow_html=True)
+view_mode = sb.radio(" ", ["Tenant", "Company"], key="view_mode")
 
-# --- Status (checkboxes) — colours the map ---
-st.sidebar.markdown("**Status**")
-_scols = st.sidebar.columns(2)
-sel_statuses = [s for i, s in enumerate(config.STATUSES)
-                if _scols[i % 2].checkbox(f"{s} ({config.STATUS_ZH[s]})", value=True,
-                                          key=f"status_{s}")]
+sb.markdown("<div class='sb-h'>Status 狀態</div>", unsafe_allow_html=True)
+_sc = sb.columns(2)
+sel_statuses = []
+if _sc[0].checkbox("🟡 Available 待租", value=True, key="st_avail"):
+    sel_statuses.append("Available")
+if _sc[1].checkbox("🟢 Rented 已租", value=True, key="st_rented"):
+    sel_statuses.append("Rented")
 
-# --- City (checkboxes) ---
-st.sidebar.markdown("**City**")
-sel_cities = [c for c in config.CITIES
-              if st.sidebar.checkbox(f"{c} ({config.CITY_ZH[c]})", value=True, key=f"city_{c}")]
+sb.markdown("<div class='sb-h'>City 城市</div>", unsafe_allow_html=True)
+_cityl = {"Taipei City": "Taipei 台北", "New Taipei City": "New Taipei 新北"}
+_cc = sb.columns(2)
+sel_cities = [c for i, c in enumerate(config.CITIES)
+              if _cc[i % 2].checkbox(_cityl[c], value=True, key=f"city_{c}")]
 
-# --- District (checkboxes, compact 2-column zh grid so it fits without
-#     scrolling; the English district name still shows on the map/cards/modal) ---
-st.sidebar.markdown("**District** (區)")
+sb.markdown("<div class='sb-h'>District 行政區</div>", unsafe_allow_html=True)
 sel_districts = []
-_dcols2 = st.sidebar.columns(2)
+_dc = sb.columns(2)
 _di = 0
 for d in config.districts():
     if config.DISTRICT_PROFILE[d]["city"] not in sel_cities:
         continue
-    if _dcols2[_di % 2].checkbox(config.DISTRICT_PROFILE[d]["name_zh"], value=True,
-                                 key=f"dist_{d}", help=d):
+    _zh = config.DISTRICT_PROFILE[d]["name_zh"].replace("區", "")
+    if _dc[_di % 2].checkbox(f"{d} {_zh}", value=True, key=f"dist_{d}"):
         sel_districts.append(d)
     _di += 1
 
+sb.markdown("<div class='sb-h'>Monthly rent 月租 (NT&#36;)</div>", unsafe_allow_html=True)
 pmin, pmax = _price_bounds()
-price_range = st.sidebar.slider("Monthly rent (NT$)", min_value=pmin, max_value=pmax,
-                                value=(pmin, pmax), step=500, format="%d")
+price_range = sb.slider(" ", min_value=pmin, max_value=pmax, value=(pmin, pmax),
+                        step=500, format="%d", key="f_price")
 
-st.sidebar.markdown("**Room type**")
+sb.markdown("<div class='sb-h'>Room type 房型</div>", unsafe_allow_html=True)
 sel_rooms = []
-_rcols = st.sidebar.columns(3)
+_rc = sb.columns(3)
 for _j, _r in enumerate(config.ROOM_TYPES.keys()):
-    if _rcols[_j % 3].checkbox(_r, value=True, key=f"room_{_r}"):
+    if _rc[_j % 3].checkbox(_r, value=True, key=f"room_{_r}"):
         sel_rooms.append(_r)
 
-with st.sidebar.expander("More filters"):
-    smin, smax = _size_bounds()
-    size_range = st.slider("Size (ping)", min_value=float(smin), max_value=float(smax),
-                           value=(float(smin), float(smax)), step=1.0)
-    max_mrt = st.slider("Max walk to MRT (min)", min_value=1, max_value=20, value=20)
+sb.markdown("<div class='sb-h'>Size 坪數 (ping)</div>", unsafe_allow_html=True)
+smin, smax = _size_bounds()
+size_range = sb.slider("  ", min_value=float(smin), max_value=float(smax),
+                       value=(float(smin), float(smax)), step=1.0, key="f_size")
 
-with st.sidebar.expander("🎨 Legend & data notes"):
+sb.markdown("<div class='sb-h'>Max MRT walk 捷運步行 (min)</div>", unsafe_allow_html=True)
+max_mrt = sb.slider("   ", min_value=1, max_value=20, value=20, key="f_mrt")
+
+with sb.expander("MRT line colours · data notes"):
     st.caption(
-        "**Map colour — status**  \n" + "  \n".join(
-            f"<span class='dot' style='background:{config.STATUS_COLOR[s]}'></span>{s} ({config.STATUS_ZH[s]})"
-            for s in ["Rented", "Available"]),
-        unsafe_allow_html=True)
-    st.caption(
-        "**MRT lines**  \n" + "  \n".join(
-            f"<span class='dot' style='background:{color}'></span>{name}"
-            for name, color in mrt.legend()),
+        "  \n".join(f"<span class='dot' style='background:{color}'></span>{name}"
+                    for name, color in mrt.legend()),
         unsafe_allow_html=True)
     st.caption("⚠️ All data is randomly generated for this demo. Photos are royalty-free "
                "stock images — no real listings or company data. MRT geometry: open data.")
@@ -276,13 +262,26 @@ df = database.query_listings(
 )
 
 # ---------------------------------------------------------------------------
-# Brand header + KPI row
+# Brand header + KPI tiles
 # ---------------------------------------------------------------------------
+LOGO_SVG = (
+    '<svg width="38" height="38" viewBox="0 0 38 38" xmlns="http://www.w3.org/2000/svg">'
+    '<defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1">'
+    '<stop offset="0" stop-color="#0F172A"/><stop offset="1" stop-color="#3B5675"/>'
+    '</linearGradient></defs>'
+    '<rect width="38" height="38" rx="10" fill="url(#lg)"/>'
+    '<path d="M19 7.5c-4.5 0-8 3.4-8 7.8 0 5.5 8 15.2 8 15.2s8-9.7 8-15.2c0-4.4-3.5-7.8-8-7.8z" fill="#fff"/>'
+    '<circle cx="19" cy="15.1" r="3" fill="#0F172A"/>'
+    '</svg>'
+)
+
 st.markdown(
     "<div class='topbar'>"
-    "<div class='brand'><span class='brand-mark'>◗</span>Taipei Rental GIS "
-    "<span class='brand-tag'>Dashboard</span></div>"
-    "<div class='brand-right'>Greater Taipei · synthetic data<br>"
+    f"<div class='brand'>{LOGO_SVG}<div>"
+    "<div class='brand-name'>Taipei Rental GIS <span class='thin'>Dashboard</span></div>"
+    "<div class='brand-sub'>Greater Taipei · interactive rental map</div>"
+    "</div></div>"
+    "<div class='brand-right'>Synthetic demo data<br>"
     "Data-Driven Portfolio · <b>Wayne Liu</b></div>"
     "</div>",
     unsafe_allow_html=True,
@@ -296,222 +295,245 @@ k4.metric("Avg. MRT walk", f"{df['mrt_min'].mean():.0f} min" if not df.empty els
 st.markdown("")
 
 # ---------------------------------------------------------------------------
-# Map markers — Airbnb-style price pills
+# Map — pure Leaflet; interactions never rerun Python
 # ---------------------------------------------------------------------------
-def price_pin(price: int, band_color: str, lid=None) -> folium.DivIcon:
-    k = f"{price/1000:.0f}K"
-    style = "background:#fff;color:#111827;border-color:#E5E7EB;transform:translate(-50%,-50%);"
-    # Clicking the pill opens the listing modal in the *parent* page (client-side,
-    # no Streamlit rerun). __showLM is defined by the injector component below.
-    click = f'onclick="parent.__showLM({int(lid)})"' if lid is not None else ""
-    html = (f'<div {click} style="position:absolute;cursor:pointer;{style}border:1px solid;'
-            f'border-radius:18px;padding:2px 9px;'
-            f'font:700 11px/1.35 -apple-system,BlinkMacSystemFont,sans-serif;'
-            f'box-shadow:0 1px 5px rgba(0,0,0,.30);white-space:nowrap;">'
-            f'<span style="color:{band_color}">●</span> {k}</div>')
+def price_pin(price: int, dot_color: str, lid: int) -> folium.DivIcon:
+    k = f"{price / 1000:.0f}K"
+    html = (f'<div onclick="parent.__showLM({lid})" style="position:absolute;cursor:pointer;'
+            f'background:#fff;color:#0F172A;border:1px solid #E2E8F0;'
+            f'transform:translate(-50%,-50%);border-radius:18px;padding:2px 9px;'
+            f"font:700 11px/1.35 'Inter',-apple-system,sans-serif;"
+            f'box-shadow:0 1px 5px rgba(15,23,42,.30);white-space:nowrap;">'
+            f'<span style="color:{dot_color}">●</span> {k}</div>')
     return folium.DivIcon(html=html, icon_size=(0, 0), icon_anchor=(0, 0))
-
-
-def modal_card_html(s: dict, view_mode: str = "Tenant") -> str:
-    pnum = media.photo_number(int(s["id"]), s["room_type"])
-    yn = lambda v: "Yes" if v else "No"
-    status = s["status"]
-    scolor = config.status_color(status)
-    badge = (f'<span class="modal-status" style="background:{scolor}">'
-             f'{status} · {config.STATUS_ZH.get(status, "")}</span>')
-    # Bolded description: emphasise the MRT walk + each highlight.
-    feats = str(s["features"]).split("|") if s["features"] else []
-    desc = (f'{s["room_type"]} · {s["size_ping"]:g} ping in {s["district"]}. '
-            f'<b>{s["mrt_min"]} min walk to MRT</b>. '
-            + ", ".join(f"<b>{f}</b>" for f in feats) + ".")
-    # Company-only management row
-    company = ""
-    if view_mode == "Company":
-        company = (f'<div><span>Owner contract left</span>'
-                   f'{s["owner_contract_years_left"]:g} yr</div>')
-    return (
-        f'<div class="listing-modal" id="lm-{int(s["id"])}">'
-        '<span class="modal-close-x">✕</span>'
-        f'<div class="modal-photo listing-photo-{pnum}">{badge}</div>'
-        '<div class="modal-body">'
-        '<div class="modal-head"><div>'
-        f'<div class="modal-title">{s["room_type"]} · {s["district"]} '
-        f'<span class="modal-zh">{s["district_zh"]} · {s["city"]}</span></div>'
-        f'<div class="modal-addr">📍 {s["address"]}</div></div>'
-        f'<div class="modal-price">NT$ {s["price"]:,}<div class="modal-permo">per month</div></div>'
-        '</div>'
-        '<div class="modal-stats">'
-        f'<div><b>{s["size_ping"]:g}</b><span>ping</span></div>'
-        f'<div><b>{s["unit_price"]:,}</b><span>NT$/ping</span></div>'
-        f'<div><b>{s["mrt_min"]} min</b><span>to MRT</span></div>'
-        f'<div><b>{s["bedrooms"]}/{s["bathrooms"]}</b><span>bed/bath</span></div>'
-        '</div>'
-        '<div class="modal-grid">'
-        f'<div><span>Building</span>{s["building_type"]}</div>'
-        f'<div><span>Floor</span>{s["floor"]}/{s["total_floors"]}</div>'
-        f'<div><span>Renovated</span>{s["renovation_age"]} yr ago</div>'
-        f'<div><span>Elevator / Parking</span>{yn(s["has_elevator"])} / {yn(s["has_parking"])}</div>'
-        f'<div><span>Pets</span>{"Allowed" if s["pet_allowed"] else "Not allowed"}</div>'
-        f'<div><span>Rent subsidy</span>{"Eligible" if s["subsidy_eligible"] else "No"}</div>'
-        f'{company}'
-        '</div>'
-        f'<div class="modal-desc">{desc}</div>'
-        f'<div class="modal-contact">Contact (fake): {s["landlord"]} · {s["phone"]} · '
-        f'listed {s["posted_date"]}</div>'
-        '</div></div>'
-    )
-
-
-def card_html(row) -> str:
-    bcolor = config.band_color(row["price_band"])
-    pnum = media.photo_number(int(row["id"]), row["room_type"])
-    badges = "".join(
-        f"<span class='badge'>{b}</span>" for b in [
-            f"{row['size_ping']:g} ping", f"🚇 {row['mrt_min']} min",
-            f"Fl {row['floor']}/{row['total_floors']}",
-            "🛗 Elevator" if row["has_elevator"] else None,
-            "🐾 Pets" if row["pet_allowed"] else None,
-        ] if b
-    )
-    return (
-        f'<div class="property-card lid-{int(row["id"])}">'
-        f'<div class="pc-photo listing-photo-{pnum}">'
-        f'<span class="pc-band" style="background:{bcolor}">{row["price_band"]}</span>'
-        '<span class="pc-heart">♡</span></div>'
-        '<div class="pc-body"><div class="pc-row1">'
-        f'<span class="pc-title">{row["room_type"]} · {row["district"]}</span>'
-        f'<span class="pc-price">NT$ {row["price"]:,}</span></div>'
-        f'<div class="pc-sub">{row["district_zh"]} · {row["city"]} · NT$ {row["price"]//1000}k/mo</div>'
-        f'<div class="pc-addr">📍 {row["address"]}</div>'
-        f'<div>{badges}</div></div></div>'
-    )
 
 
 col_map, col_list = st.columns([2.05, 1])
 
 with col_map:
-    view = st.session_state.view
-    st.markdown('<div id="map-spinner"><div class="map-spinner-dot"></div></div>',
-                unsafe_allow_html=True)
-    # prefer_canvas renders the MRT lines + 111 station dots on a single canvas
-    # instead of hundreds of SVG nodes — far cheaper to (re)draw on each rerun.
-    fmap = folium.Map(location=view["center"], zoom_start=view["zoom"],
+    fmap = folium.Map(location=list(config.MAP_CENTER), zoom_start=config.DEFAULT_ZOOM,
                       tiles=config.MAP_TILES, control_scale=True, prefer_canvas=True)
     mrt.add_mrt_layer(fmap)     # Taipei MRT lines (under the listing markers)
     mrt.add_mrt_stations(fmap)  # station dots on top of the lines
     cluster = MarkerCluster(disableClusteringAtZoom=15).add_to(fmap)
-    for _, row in df.iterrows():
+    for r in df.itertuples():
         folium.Marker(
-            location=[row["lat"], row["lon"]],
-            icon=price_pin(row["price"], config.status_color(row["status"]), lid=int(row["id"])),
-            tooltip=f"{row['room_type']} · NT$ {row['price']:,} · {row['district']} · {row['status']}",
+            location=[r.lat, r.lon],
+            icon=price_pin(int(r.price), config.status_color(r.status), int(r.id)),
+            tooltip=f"{r.room_type} · NT$ {r.price:,} · {r.district} · {r.status}",
         ).add_to(cluster)
-    # Only bounds/center/zoom are watched -> panning refilters the cards and
-    # preserves the view. Marker clicks open the modal client-side (no rerun).
-    map_state = st_folium(fmap, width=None, height=630, key="map",
-                          returned_objects=["bounds", "center", "zoom"])
-
-# Keep the map where the user left it; only store when it MEANINGFULLY moved so
-# float jitter doesn't trigger an extra rerun/redraw.
-if map_state:
-    c, z = map_state.get("center"), map_state.get("zoom")
-    if c and z:
-        new_view = {"center": [round(c["lat"], 4), round(c["lng"], 4)], "zoom": z}
-        if new_view != st.session_state.view:
-            st.session_state.view = new_view
-
-# Listings within the current map viewport (right-hand cards react to panning)
-bounds = map_state.get("bounds") if map_state else None
-in_view = df
-if bounds and bounds.get("_southWest") and not df.empty:
-    sw, ne = bounds["_southWest"], bounds["_northEast"]
-    # ignore the degenerate bounds Leaflet reports before the map is sized
-    if (ne["lat"] - sw["lat"]) > 0.002 and (ne["lng"] - sw["lng"]) > 0.002:
-        in_view = df[(df["lat"] >= sw["lat"]) & (df["lat"] <= ne["lat"]) &
-                     (df["lon"] >= sw["lng"]) & (df["lon"] <= ne["lng"])]
+    # Watch only `all_drawings` (always null here): the component's value never
+    # changes, so pan/zoom NEVER rerun Python. Cards react client-side instead.
+    st_folium(fmap, width=None, height=630, key="map", returned_objects=["all_drawings"])
 
 with col_list:
-    st.markdown(f"#### {len(in_view)} stays in view")
+    st.markdown(
+        "<div class='stays-head'><span id='stays-count'>Loading…</span></div>"
+        "<div class='stays-sub'>Updates live as you move the map · click a card for details</div>"
+        "<div id='cards-list'></div><div id='cards-note'></div>",
+        unsafe_allow_html=True,
+    )
     if df.empty:
         st.info("No listings match the current filters. Try widening them.")
-    elif in_view.empty:
-        st.info("No listings in the current map view — pan or zoom out.")
-    else:
-        ordered = in_view.sort_values("price")
-        st.markdown("".join(card_html(r) for _, r in ordered.head(24).iterrows()),
-                    unsafe_allow_html=True)
-        if len(in_view) > 24:
-            st.caption(f"Showing first 24 of {len(in_view)} in view — zoom in or filter to narrow.")
 
 # ---------------------------------------------------------------------------
-# All modals (hidden) + backdrop, then a JS injector that wires card / marker
-# clicks to show them. Opening/closing is 100% client-side, so it never reruns
-# Streamlit or reloads the map.
+# Modal shell + client-side injector (cards, modal, view persistence)
 # ---------------------------------------------------------------------------
-# Only render the modals that can actually be opened right now: the visible
-# cards always, plus every in-view marker once the map is zoomed in enough that
-# markers un-cluster (so a marker click always finds its modal). This keeps the
-# hidden-modal count small even with 1000 listings.
-if st.session_state.view["zoom"] >= 15:
-    modal_rows = in_view
-else:
-    modal_rows = in_view.sort_values("price").head(24)
-st.markdown(
-    '<div class="modal-backdrop" id="lm-backdrop"></div>'
-    + "".join(modal_card_html(r, view_mode) for _, r in modal_rows.iterrows()),
-    unsafe_allow_html=True,
-)
+st.markdown('<div class="modal-backdrop" id="lm-backdrop"></div>'
+            '<div class="listing-modal" id="lm-shell"></div>', unsafe_allow_html=True)
+
+payload = {}
+for r in df.itertuples():
+    payload[int(r.id)] = {
+        "lat": float(r.lat), "lon": float(r.lon), "price": int(r.price),
+        "rt": r.room_type, "d": r.district, "dz": r.district_zh, "city": r.city,
+        "addr": r.address, "ping": float(r.size_ping), "up": int(r.unit_price),
+        "mrt": int(r.mrt_min), "bed": int(r.bedrooms), "bath": int(r.bathrooms),
+        "bt": r.building_type, "fl": int(r.floor), "tfl": int(r.total_floors),
+        "ren": int(r.renovation_age), "elev": int(r.has_elevator),
+        "park": int(r.has_parking), "pet": int(r.pet_allowed), "sub": int(r.subsidy_eligible),
+        "st": r.status, "oc": float(r.owner_contract_years_left),
+        "ft": [f for f in str(r.features).split("|") if f],
+        "ll": r.landlord, "ph": r.phone, "pd": r.posted_date, "band": r.price_band,
+        "pn": media.photo_number(int(r.id), r.room_type),
+    }
 
 st.session_state["_nonce"] = st.session_state.get("_nonce", 0) + 1
-components.html(
-    f"""
-    <script>
-    /* {st.session_state["_nonce"]} — re-run the wiring after every Streamlit rerun */
-    (function () {{
-      var doc = window.parent.document;
-      window.parent.__showLM = function (id) {{
-        var bd = doc.getElementById('lm-backdrop'); if (bd) bd.style.display = 'block';
-        var cur = doc.querySelector('.listing-modal.lm-open'); if (cur) cur.classList.remove('lm-open');
-        var m = doc.getElementById('lm-' + id); if (m) m.classList.add('lm-open');
-      }};
-      window.parent.__hideLM = function () {{
-        var bd = doc.getElementById('lm-backdrop'); if (bd) bd.style.display = 'none';
-        var cur = doc.querySelector('.listing-modal.lm-open'); if (cur) cur.classList.remove('lm-open');
-      }};
-      doc.querySelectorAll('.property-card').forEach(function (c) {{
-        var m = (c.className.match(/lid-(\\d+)/) || [])[1];
-        if (m) {{ c.style.cursor = 'pointer'; c.onclick = function () {{ window.parent.__showLM(m); }}; }}
-      }});
-      var bd = doc.getElementById('lm-backdrop');
-      if (bd) bd.onclick = window.parent.__hideLM;
-      doc.querySelectorAll('.modal-close-x').forEach(function (x) {{
-        x.onclick = function (e) {{ e.stopPropagation(); window.parent.__hideLM(); }};
-      }});
-      doc.onkeydown = function (e) {{ if (e.key === 'Escape') window.parent.__hideLM(); }};
 
-      /* Map loading spinner: this injector runs after every rerun, so a rerun
-         just finished -> hide it; then show it again when the map next moves. */
-      var sp = doc.getElementById('map-spinner'); if (sp) sp.classList.remove('on');
-      var mapIfr = null;
-      doc.querySelectorAll('iframe').forEach(function (f) {{
-        try {{ if (Object.keys(f.contentWindow).some(function (k) {{ return k.indexOf('map_') === 0; }})) mapIfr = f; }} catch (e) {{}}
-      }});
-      if (mapIfr) {{
-        try {{
-          var mw = mapIfr.contentWindow;
-          var mk = Object.keys(mw).find(function (k) {{ return k.indexOf('map_') === 0; }});
-          var showSp = function () {{
-            var s = doc.getElementById('map-spinner'); if (!s) return;
-            s.classList.add('on');
-            clearTimeout(window.parent.__spTO);
-            window.parent.__spTO = setTimeout(function () {{ s.classList.remove('on'); }}, 5000);
-          }};
-          mw[mk].off('movestart zoomstart', showSp);
-          mw[mk].on('movestart zoomstart', showSp);
-        }} catch (e) {{}}
-      }}
-    }})();
-    </script>
-    """,
-    height=0,
-)
+INJECTOR_JS = r"""
+/* gis-injector nonce __NONCE__ */
+(function () {
+  var doc = window.parent.document;
+  var LISTINGS = __LISTINGS__;
+  var MODE = "__MODE__";
+  var CAP = __CAP__;
+  var SCOLOR = __SCOLOR__;
+  var SZH = __SZH__;
+  var BAND = __BAND__;
+
+  function money(n) { return Number(n).toLocaleString('en-US'); }
+
+  function cardHTML(id) {
+    var s = LISTINGS[id];
+    var badges = [s.ping + ' ping', '🚇 ' + s.mrt + ' min', 'Fl ' + s.fl + '/' + s.tfl];
+    if (s.elev) badges.push('🛗 Elevator');
+    if (s.pet) badges.push('🐾 Pets');
+    return '<div class="property-card" data-lid="' + id + '">'
+      + '<div class="pc-photo listing-photo-' + s.pn + '">'
+      + '<span class="pc-band" style="background:' + BAND[s.band] + '">' + s.band + '</span>'
+      + '<span class="pc-heart">♡</span></div>'
+      + '<div class="pc-body"><div class="pc-row1">'
+      + '<span class="pc-title">' + s.rt + ' · ' + s.d + '</span>'
+      + '<span class="pc-price">NT$ ' + money(s.price) + '</span></div>'
+      + '<div class="pc-sub">' + s.dz + ' · ' + s.city + ' · '
+      + '<span style="color:' + SCOLOR[s.st] + '">●</span> ' + s.st + ' ' + SZH[s.st] + '</div>'
+      + '<div class="pc-addr">📍 ' + s.addr + '</div>'
+      + '<div>' + badges.map(function (b) { return '<span class="badge">' + b + '</span>'; }).join('') + '</div>'
+      + '</div></div>';
+  }
+
+  function modalHTML(id) {
+    var s = LISTINGS[id];
+    var yn = function (v) { return v ? 'Yes' : 'No'; };
+    var desc = s.rt + ' · ' + s.ping + ' ping in ' + s.d
+      + '. <b>' + s.mrt + ' min walk to MRT</b>. '
+      + s.ft.map(function (f) { return '<b>' + f + '</b>'; }).join(', ') + '.';
+    var company = (MODE === 'Company')
+      ? '<div><span>Owner contract left</span>' + s.oc + ' yr</div>' : '';
+    return '<span class="modal-close-x">✕</span>'
+      + '<div class="modal-photo listing-photo-' + s.pn + '">'
+      + '<span class="modal-status" style="background:' + SCOLOR[s.st] + '">'
+      + s.st + ' · ' + SZH[s.st] + '</span></div>'
+      + '<div class="modal-body">'
+      + '<div class="modal-head"><div>'
+      + '<div class="modal-title">' + s.rt + ' · ' + s.d
+      + ' <span class="modal-zh">' + s.dz + ' · ' + s.city + '</span></div>'
+      + '<div class="modal-addr">📍 ' + s.addr + '</div></div>'
+      + '<div class="modal-price">NT$ ' + money(s.price)
+      + '<div class="modal-permo">per month</div></div></div>'
+      + '<div class="modal-stats">'
+      + '<div><b>' + s.ping + '</b><span>ping</span></div>'
+      + '<div><b>' + money(s.up) + '</b><span>NT$/ping</span></div>'
+      + '<div><b>' + s.mrt + ' min</b><span>to MRT</span></div>'
+      + '<div><b>' + s.bed + '/' + s.bath + '</b><span>bed/bath</span></div></div>'
+      + '<div class="modal-grid">'
+      + '<div><span>Building</span>' + s.bt + '</div>'
+      + '<div><span>Floor</span>' + s.fl + '/' + s.tfl + '</div>'
+      + '<div><span>Renovated</span>' + s.ren + ' yr ago</div>'
+      + '<div><span>Elevator / Parking</span>' + yn(s.elev) + ' / ' + yn(s.park) + '</div>'
+      + '<div><span>Pets</span>' + (s.pet ? 'Allowed' : 'Not allowed') + '</div>'
+      + '<div><span>Rent subsidy</span>' + (s.sub ? 'Eligible' : 'No') + '</div>'
+      + company + '</div>'
+      + '<div class="modal-desc">' + desc + '</div>'
+      + '<div class="modal-contact">Contact (fake): ' + s.ll + ' · ' + s.ph
+      + ' · listed ' + s.pd + '</div></div>';
+  }
+
+  window.parent.__showLM = function (id) {
+    var shell = doc.getElementById('lm-shell');
+    var bd = doc.getElementById('lm-backdrop');
+    if (!shell || !LISTINGS[id]) return;
+    shell.innerHTML = modalHTML(id);
+    shell.scrollTop = 0;
+    shell.classList.add('lm-open');
+    if (bd) bd.style.display = 'block';
+  };
+  window.parent.__hideLM = function () {
+    var shell = doc.getElementById('lm-shell');
+    var bd = doc.getElementById('lm-backdrop');
+    if (shell) shell.classList.remove('lm-open');
+    if (bd) bd.style.display = 'none';
+  };
+
+  var bd = doc.getElementById('lm-backdrop');
+  if (bd) bd.onclick = window.parent.__hideLM;
+  var shell = doc.getElementById('lm-shell');
+  if (shell) shell.onclick = function (e) {
+    if (e.target.classList.contains('modal-close-x')) window.parent.__hideLM();
+  };
+  doc.onkeydown = function (e) { if (e.key === 'Escape') window.parent.__hideLM(); };
+
+  var list = doc.getElementById('cards-list');
+  if (list) list.onclick = function (e) {
+    var c = e.target.closest('.property-card');
+    if (c) window.parent.__showLM(c.getAttribute('data-lid'));
+  };
+
+  function findMap() {
+    var res = null;
+    doc.querySelectorAll('iframe').forEach(function (f) {
+      // only consider iframes that are attached AND visible (a stale, replaced
+      // component iframe must never win over the on-screen map)
+      if (!f.isConnected || f.offsetParent === null) return;
+      try {
+        var w = f.contentWindow;
+        var k = Object.keys(w).find(function (x) { return x.indexOf('map_') === 0; });
+        if (k) res = w[k];
+      } catch (err) {}
+    });
+    return res;
+  }
+
+  function renderCards(map) {
+    var listEl = doc.getElementById('cards-list');
+    var countEl = doc.getElementById('stays-count');
+    var noteEl = doc.getElementById('cards-note');
+    if (!listEl || !map) return;
+    var b = map.getBounds();
+    var ids = Object.keys(LISTINGS).filter(function (id) {
+      var s = LISTINGS[id];
+      return b.contains([s.lat, s.lon]);
+    });
+    ids.sort(function (a, c) { return LISTINGS[a].price - LISTINGS[c].price; });
+    if (countEl) countEl.textContent = ids.length + ' stays in view';
+    if (!ids.length) {
+      listEl.innerHTML = '<div class="cards-empty">No listings in the current map view — pan or zoom out.</div>';
+      if (noteEl) noteEl.textContent = '';
+      return;
+    }
+    listEl.innerHTML = ids.slice(0, CAP).map(cardHTML).join('');
+    if (noteEl) noteEl.textContent = ids.length > CAP
+      ? 'Showing the ' + CAP + ' cheapest of ' + ids.length + ' in view — zoom in to narrow.'
+      : '';
+  }
+
+  function boot(tries) {
+    var map = findMap();
+    if (!map) { if (tries > 0) setTimeout(function () { boot(tries - 1); }, 300); return; }
+    map.whenReady(function () {
+      try {
+        var saved = sessionStorage.getItem('gisView');
+        if (saved) {
+          var v = JSON.parse(saved);
+          map.setView(v.c, v.z, { animate: false });
+        }
+      } catch (err) {}
+      // detach the PREVIOUS injector's handler first (it closes over stale
+      // data), then attach this run's
+      if (map.__gisHandler) map.off('moveend zoomend', map.__gisHandler);
+      map.__gisHandler = function () {
+        try {
+          sessionStorage.setItem('gisView', JSON.stringify(
+            { c: [map.getCenter().lat, map.getCenter().lng], z: map.getZoom() }));
+        } catch (err) {}
+        renderCards(map);
+      };
+      map.on('moveend zoomend', map.__gisHandler);
+      renderCards(map);
+      setTimeout(function () { renderCards(map); }, 800);
+    });
+  }
+  boot(40);
+})();
+"""
+
+_js = (INJECTOR_JS
+       .replace("__NONCE__", str(st.session_state["_nonce"]))
+       .replace("__LISTINGS__", json.dumps(payload, ensure_ascii=False))
+       .replace("__MODE__", view_mode)
+       .replace("__CAP__", str(CARD_CAP))
+       .replace("__SCOLOR__", json.dumps(config.STATUS_COLOR))
+       .replace("__SZH__", json.dumps(config.STATUS_ZH, ensure_ascii=False))
+       .replace("__BAND__", json.dumps({n: c for n, _, _, c in config.PRICE_BANDS})))
+
+components.html("<script>" + _js + "</script>", height=0)
