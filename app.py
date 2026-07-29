@@ -19,6 +19,7 @@ Run:  streamlit run app.py
 """
 
 import streamlit as st
+import streamlit.components.v1 as components
 import folium
 from folium.plugins import MarkerCluster
 from streamlit_folium import st_folium
@@ -115,13 +116,19 @@ st.markdown(
         background: #D1D5DB; border-radius: 4px; }
 
     /* ---- centered listing modal (z above the sidebar @ 999991) ---- */
-    .modal-backdrop { position:fixed; inset:0; background:rgba(17,24,39,.55);
+    .modal-backdrop { display:none; position:fixed; inset:0; background:rgba(17,24,39,.55);
         z-index:999992; }
-    .listing-modal { position:fixed; top:50%; left:50%; transform:translate(-50%,-50%);
+    .listing-modal { display:none; position:fixed; top:50%; left:50%;
+        transform:translate(-50%,-50%);
         width:min(560px,92vw); max-height:88vh; overflow:auto; background:#fff;
         border-radius:20px; box-shadow:0 24px 70px rgba(0,0,0,.42); z-index:999993; }
-    .modal-photo { width:100%; height:230px; object-fit:cover; display:block;
-        border-radius:20px 20px 0 0; }
+    .listing-modal.lm-open { display:block; }
+    .modal-close-x { position:absolute; top:12px; right:14px; width:34px; height:34px;
+        border-radius:50%; background:rgba(255,255,255,.94); color:#111827; cursor:pointer;
+        display:flex; align-items:center; justify-content:center; font-weight:700;
+        font-size:.95rem; box-shadow:0 2px 10px rgba(0,0,0,.3); z-index:2; }
+    .modal-photo { height:230px; background-size:cover; background-position:center;
+        background-color:#EEE; border-radius:20px 20px 0 0; }
     .modal-body { padding:15px 20px 20px; }
     .modal-head { display:flex; justify-content:space-between; align-items:flex-start; gap:10px; }
     .modal-title { font-weight:700; font-size:1.12rem; color:#111827; line-height:1.25; }
@@ -139,15 +146,8 @@ st.markdown(
     .modal-desc { margin-top:14px; font-size:.82rem; color:#4B5563; }
     .modal-contact { margin-top:8px; font-size:.72rem; color:#9CA3AF; }
 
-    /* close button = the st.button rendered right after the hidden anchor
-       (Streamlit 1.12 wraps each widget in .element-container, not a testid) */
-    .element-container:has(#modal-close-anchor) { display:none; }
-    .element-container:has(#modal-close-anchor) + .element-container {
-        position:fixed; top:16px; right:22px; left:auto; width:44px; z-index:999994; }
-    .element-container:has(#modal-close-anchor) + .element-container .stButton { width:44px; }
-    .element-container:has(#modal-close-anchor) + .element-container .stButton button {
-        border-radius:50%; width:44px; height:44px; font-size:1.15rem; font-weight:700;
-        background:#fff; border:1px solid #E5E7EB; box-shadow:0 6px 18px rgba(0,0,0,.28); padding:0; }
+    /* the invisible JS-injector component takes no space */
+    iframe[title="st.iframe"] { display:block; }
     </style>
     """,
     unsafe_allow_html=True,
@@ -156,12 +156,8 @@ st.markdown(
 # Inject the (once-embedded) photo background-image classes
 st.markdown(media.photo_css(), unsafe_allow_html=True)
 
-for _k, _v in {
-    "selected_id": None,          # listing shown in the centered modal
-    "last_click_xy": None,        # dedupe repeated last_object_clicked values
-    "view": {"center": list(config.MAP_CENTER), "zoom": config.DEFAULT_ZOOM},
-}.items():
-    st.session_state.setdefault(_k, _v)
+st.session_state.setdefault("view", {"center": list(config.MAP_CENTER),
+                                     "zoom": config.DEFAULT_ZOOM})
 
 
 @cache_data
@@ -237,13 +233,6 @@ df = database.query_listings(
     max_mrt_min=max_mrt if max_mrt < 20 else None,
 )
 
-if st.session_state.selected_id is not None and (
-    df.empty or st.session_state.selected_id not in set(df["id"])):
-    st.session_state.selected_id = None
-
-selected = (database.get_listing(int(st.session_state.selected_id))
-            if st.session_state.selected_id is not None else None)
-
 # ---------------------------------------------------------------------------
 # Brand header + KPI row
 # ---------------------------------------------------------------------------
@@ -267,28 +256,27 @@ st.markdown("")
 # ---------------------------------------------------------------------------
 # Map markers — Airbnb-style price pills
 # ---------------------------------------------------------------------------
-def price_pin(price: int, band_color: str, is_sel: bool = False) -> folium.DivIcon:
+def price_pin(price: int, band_color: str, lid=None) -> folium.DivIcon:
     k = f"{price/1000:.0f}K"
-    if is_sel:
-        style = ("background:#111827;color:#fff;border-color:#111827;"
-                 "transform:translate(-50%,-50%) scale(1.14);z-index:9999;")
-        dot = "#fff"
-    else:
-        style = "background:#fff;color:#111827;border-color:#E5E7EB;transform:translate(-50%,-50%);"
-        dot = band_color
-    html = (f'<div style="position:absolute;{style}border:1px solid;border-radius:18px;'
-            f'padding:2px 9px;font:700 11px/1.35 -apple-system,BlinkMacSystemFont,sans-serif;'
+    style = "background:#fff;color:#111827;border-color:#E5E7EB;transform:translate(-50%,-50%);"
+    # Clicking the pill opens the listing modal in the *parent* page (client-side,
+    # no Streamlit rerun). __showLM is defined by the injector component below.
+    click = f'onclick="parent.__showLM({int(lid)})"' if lid is not None else ""
+    html = (f'<div {click} style="position:absolute;cursor:pointer;{style}border:1px solid;'
+            f'border-radius:18px;padding:2px 9px;'
+            f'font:700 11px/1.35 -apple-system,BlinkMacSystemFont,sans-serif;'
             f'box-shadow:0 1px 5px rgba(0,0,0,.30);white-space:nowrap;">'
-            f'<span style="color:{dot}">●</span> {k}</div>')
+            f'<span style="color:{band_color}">●</span> {k}</div>')
     return folium.DivIcon(html=html, icon_size=(0, 0), icon_anchor=(0, 0))
 
 
 def modal_card_html(s: dict) -> str:
-    photo = media.photo_data_uri(media.photo_number(int(s["id"]), s["room_type"]))
+    pnum = media.photo_number(int(s["id"]), s["room_type"])
     yn = lambda v: "Yes" if v else "No"
     return (
-        '<div class="listing-modal">'
-        f'<img class="modal-photo" src="{photo}">'
+        f'<div class="listing-modal" id="lm-{int(s["id"])}">'
+        '<span class="modal-close-x">✕</span>'
+        f'<div class="modal-photo listing-photo-{pnum}"></div>'
         '<div class="modal-body">'
         '<div class="modal-head"><div>'
         f'<div class="modal-title">{s["room_type"]} · {s["district"]} '
@@ -317,6 +305,31 @@ def modal_card_html(s: dict) -> str:
     )
 
 
+def card_html(row) -> str:
+    bcolor = config.band_color(row["price_band"])
+    pnum = media.photo_number(int(row["id"]), row["room_type"])
+    badges = "".join(
+        f"<span class='badge'>{b}</span>" for b in [
+            f"{row['size_ping']:g} ping", f"🚇 {row['mrt_min']} min",
+            f"Fl {row['floor']}/{row['total_floors']}",
+            "🛗 Elevator" if row["has_elevator"] else None,
+            "🐾 Pets" if row["pet_allowed"] else None,
+        ] if b
+    )
+    return (
+        f'<div class="property-card lid-{int(row["id"])}">'
+        f'<div class="pc-photo listing-photo-{pnum}">'
+        f'<span class="pc-band" style="background:{bcolor}">{row["price_band"]}</span>'
+        '<span class="pc-heart">♡</span></div>'
+        '<div class="pc-body"><div class="pc-row1">'
+        f'<span class="pc-title">{row["room_type"]} · {row["district"]}</span>'
+        f'<span class="pc-price">NT$ {row["price"]:,}</span></div>'
+        f'<div class="pc-sub">{row["district_zh"]} · {row["city"]} · NT$ {row["price"]//1000}k/mo</div>'
+        f'<div class="pc-addr">📍 {row["address"]}</div>'
+        f'<div>{badges}</div></div></div>'
+    )
+
+
 col_map, col_list = st.columns([2.05, 1])
 
 with col_map:
@@ -331,13 +344,13 @@ with col_map:
     for _, row in df.iterrows():
         folium.Marker(
             location=[row["lat"], row["lon"]],
-            icon=price_pin(row["price"], config.band_color(row["price_band"])),
+            icon=price_pin(row["price"], config.band_color(row["price_band"]), lid=int(row["id"])),
             tooltip=f"{row['room_type']} · NT$ {row['price']:,} · {row['district']}",
         ).add_to(cluster)
-    map_state = st_folium(
-        fmap, width=None, height=630, key="map",
-        returned_objects=["bounds", "center", "zoom", "last_object_clicked"],
-    )
+    # Only bounds/center/zoom are watched -> panning refilters the cards and
+    # preserves the view. Marker clicks open the modal client-side (no rerun).
+    map_state = st_folium(fmap, width=None, height=630, key="map",
+                          returned_objects=["bounds", "center", "zoom"])
 
 # Keep the map where the user left it; only store when it MEANINGFULLY moved so
 # float jitter doesn't trigger an extra rerun/redraw.
@@ -347,17 +360,6 @@ if map_state:
         new_view = {"center": [round(c["lat"], 4), round(c["lng"], 4)], "zoom": z}
         if new_view != st.session_state.view:
             st.session_state.view = new_view
-
-# Click a marker -> open the modal (dedupe the persisted last_object_clicked)
-lc = map_state.get("last_object_clicked") if map_state else None
-if lc and not df.empty:
-    xy = (round(lc["lat"], 6), round(lc["lng"], 6))
-    if xy != st.session_state.last_click_xy:
-        st.session_state.last_click_xy = xy
-        df2 = df.copy()
-        df2["_d"] = (df2["lat"] - lc["lat"]) ** 2 + (df2["lon"] - lc["lng"]) ** 2
-        st.session_state.selected_id = int(df2.sort_values("_d").iloc[0]["id"])
-        _rerun()
 
 # Listings within the current map viewport (right-hand cards react to panning)
 bounds = map_state.get("bounds") if map_state else None
@@ -369,68 +371,59 @@ if bounds and bounds.get("_southWest") and not df.empty:
         in_view = df[(df["lat"] >= sw["lat"]) & (df["lat"] <= ne["lat"]) &
                      (df["lon"] >= sw["lng"]) & (df["lon"] <= ne["lng"])]
 
-# ---------------------------------------------------------------------------
-# Property cards
-# ---------------------------------------------------------------------------
 with col_list:
     st.markdown(f"#### {len(in_view)} stays in view")
-
     if df.empty:
         st.info("No listings match the current filters. Try widening them.")
     elif in_view.empty:
         st.info("No listings in the current map view — pan or zoom out.")
     else:
         ordered = in_view.sort_values("price")
-
-        for _, row in ordered.head(24).iterrows():
-            is_sel = row["id"] == st.session_state.selected_id
-            bcolor = config.band_color(row["price_band"])
-            pnum = media.photo_number(int(row["id"]), row["room_type"])
-            badges = "".join(
-                f"<span class='badge'>{b}</span>" for b in [
-                    f"{row['size_ping']:g} ping", f"🚇 {row['mrt_min']} min",
-                    f"Fl {row['floor']}/{row['total_floors']}",
-                    "🛗 Elevator" if row["has_elevator"] else None,
-                    "🐾 Pets" if row["pet_allowed"] else None,
-                ] if b
-            )
-            st.markdown(
-                f"""
-                <div class="property-card {'selected' if is_sel else ''}">
-                    <div class="pc-photo listing-photo-{pnum}">
-                        <span class="pc-band" style="background:{bcolor}">{row['price_band']}</span>
-                        <span class="pc-heart">♡</span>
-                    </div>
-                    <div class="pc-body">
-                        <div class="pc-row1">
-                            <span class="pc-title">{row['room_type']} · {row['district']}</span>
-                            <span class="pc-price">NT$ {row['price']:,}</span>
-                        </div>
-                        <div class="pc-sub">{row['district_zh']} · {row['city']} · NT$ {row['price']//1000}k/mo</div>
-                        <div class="pc-addr">📍 {row['address']}</div>
-                        <div>{badges}</div>
-                    </div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-            label = "✓ Showing details" if is_sel else "View details  →"
-            if st.button(label, key=f"btn_{row['id']}", disabled=bool(is_sel)):
-                st.session_state.selected_id = int(row["id"])
-                _rerun()
-
+        st.markdown("".join(card_html(r) for _, r in ordered.head(24).iterrows()),
+                    unsafe_allow_html=True)
         if len(in_view) > 24:
             st.caption(f"Showing first 24 of {len(in_view)} in view — zoom in or filter to narrow.")
 
 # ---------------------------------------------------------------------------
-# Centered modal for the selected listing (marker click or card button)
+# All modals (hidden) + backdrop, then a JS injector that wires card / marker
+# clicks to show them. Opening/closing is 100% client-side, so it never reruns
+# Streamlit or reloads the map.
 # ---------------------------------------------------------------------------
-if selected:
-    # Hidden anchor -> CSS turns the *next* element (this button) into the
-    # floating ✕ close button positioned over the modal.
-    st.markdown('<div id="modal-close-anchor"></div>', unsafe_allow_html=True)
-    if st.button("✕", key="modal_close", help="Close"):
-        st.session_state.selected_id = None
-        _rerun()
-    st.markdown('<div class="modal-backdrop"></div>' + modal_card_html(selected),
-                unsafe_allow_html=True)
+# Render a modal for EVERY listing (any visible marker must have one to open).
+st.markdown(
+    '<div class="modal-backdrop" id="lm-backdrop"></div>'
+    + "".join(modal_card_html(r) for _, r in df.iterrows()),
+    unsafe_allow_html=True,
+)
+
+st.session_state["_nonce"] = st.session_state.get("_nonce", 0) + 1
+components.html(
+    f"""
+    <script>
+    /* {st.session_state["_nonce"]} — re-run the wiring after every Streamlit rerun */
+    (function () {{
+      var doc = window.parent.document;
+      window.parent.__showLM = function (id) {{
+        var bd = doc.getElementById('lm-backdrop'); if (bd) bd.style.display = 'block';
+        var cur = doc.querySelector('.listing-modal.lm-open'); if (cur) cur.classList.remove('lm-open');
+        var m = doc.getElementById('lm-' + id); if (m) m.classList.add('lm-open');
+      }};
+      window.parent.__hideLM = function () {{
+        var bd = doc.getElementById('lm-backdrop'); if (bd) bd.style.display = 'none';
+        var cur = doc.querySelector('.listing-modal.lm-open'); if (cur) cur.classList.remove('lm-open');
+      }};
+      doc.querySelectorAll('.property-card').forEach(function (c) {{
+        var m = (c.className.match(/lid-(\\d+)/) || [])[1];
+        if (m) {{ c.style.cursor = 'pointer'; c.onclick = function () {{ window.parent.__showLM(m); }}; }}
+      }});
+      var bd = doc.getElementById('lm-backdrop');
+      if (bd) bd.onclick = window.parent.__hideLM;
+      doc.querySelectorAll('.modal-close-x').forEach(function (x) {{
+        x.onclick = function (e) {{ e.stopPropagation(); window.parent.__hideLM(); }};
+      }});
+      doc.onkeydown = function (e) {{ if (e.key === 'Escape') window.parent.__hideLM(); }};
+    }})();
+    </script>
+    """,
+    height=0,
+)
