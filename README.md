@@ -28,15 +28,17 @@ on a **SQLite** backend.
 - **Taipei MRT network overlay** — all lines in their official colours
   (Tamsui–Xinyi, Songshan–Xindian, Zhonghe–Xinlu, Bannan, Wenhu) plus **111
   station markers** (hover for the station name).
-- **Pinned map, scrollable listings** — the map stays in view while the property
-  cards scroll in their own pane (Airbnb desktop layout).
+- **Search-as-you-pan** — the property cards on the right update to the listings
+  inside the current map viewport as you pan and zoom (Airbnb-style), while the
+  map keeps its position.
+- **Click-to-open modal** — click a map marker *or* a card to open a centered
+  modal with the full listing (hero photo, rent-per-ping, MRT walk, amenities…).
 - **220 synthetic listings** across **14 districts** of Taipei City & New Taipei
   City, scattered around real district centroids.
-- **Six live filters** — city, district, monthly rent, room type, unit size, and
-  max walking distance to MRT.
-- **Photo property cards** with price band, amenities, and a *View on map* action.
-- **"Fly to" interaction** — click a card or a map pin to recenter, zoom and
-  highlight the listing, with a full detail panel (hero photo + specs) below.
+- **Checkbox filters** — city, district, monthly rent, room type, unit size, and
+  max walking distance to MRT, all directly toggleable in the sidebar.
+- **Pinned map, scrollable listings** — the map stays in view while the property
+  cards scroll in their own pane (Airbnb desktop layout).
 - **Live KPI header** — median rent, average size and average MRT walk update
   with every filter change.
 - **SQLite backend** with a parameterised query layer, rebuilt automatically on

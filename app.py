@@ -113,6 +113,41 @@ st.markdown(
     div[data-testid="column"]:has(iframe) + div[data-testid="column"]::-webkit-scrollbar { width: 7px; }
     div[data-testid="column"]:has(iframe) + div[data-testid="column"]::-webkit-scrollbar-thumb {
         background: #D1D5DB; border-radius: 4px; }
+
+    /* ---- centered listing modal (z above the sidebar @ 999991) ---- */
+    .modal-backdrop { position:fixed; inset:0; background:rgba(17,24,39,.55);
+        z-index:999992; }
+    .listing-modal { position:fixed; top:50%; left:50%; transform:translate(-50%,-50%);
+        width:min(560px,92vw); max-height:88vh; overflow:auto; background:#fff;
+        border-radius:20px; box-shadow:0 24px 70px rgba(0,0,0,.42); z-index:999993; }
+    .modal-photo { width:100%; height:230px; object-fit:cover; display:block;
+        border-radius:20px 20px 0 0; }
+    .modal-body { padding:15px 20px 20px; }
+    .modal-head { display:flex; justify-content:space-between; align-items:flex-start; gap:10px; }
+    .modal-title { font-weight:700; font-size:1.12rem; color:#111827; line-height:1.25; }
+    .modal-zh { color:#9CA3AF; font-size:.74rem; font-weight:500; }
+    .modal-addr { color:#6B7280; font-size:.8rem; margin-top:3px; }
+    .modal-price { font-weight:800; font-size:1.2rem; color:#111827; white-space:nowrap; text-align:right; }
+    .modal-permo { font-size:.64rem; color:#9CA3AF; font-weight:500; }
+    .modal-stats { display:flex; gap:8px; margin:14px 0; }
+    .modal-stats > div { flex:1; background:#F7F7F8; border-radius:12px; padding:8px 4px; text-align:center; }
+    .modal-stats b { display:block; font-size:.92rem; color:#111827; }
+    .modal-stats span { font-size:.64rem; color:#9CA3AF; }
+    .modal-grid { display:grid; grid-template-columns:1fr 1fr; gap:9px 16px; font-size:.82rem; color:#374151; }
+    .modal-grid > div span { display:block; color:#9CA3AF; font-size:.66rem;
+        text-transform:uppercase; letter-spacing:.03em; }
+    .modal-desc { margin-top:14px; font-size:.82rem; color:#4B5563; }
+    .modal-contact { margin-top:8px; font-size:.72rem; color:#9CA3AF; }
+
+    /* close button = the st.button rendered right after the hidden anchor
+       (Streamlit 1.12 wraps each widget in .element-container, not a testid) */
+    .element-container:has(#modal-close-anchor) { display:none; }
+    .element-container:has(#modal-close-anchor) + .element-container {
+        position:fixed; top:16px; right:22px; left:auto; width:44px; z-index:999994; }
+    .element-container:has(#modal-close-anchor) + .element-container .stButton { width:44px; }
+    .element-container:has(#modal-close-anchor) + .element-container .stButton button {
+        border-radius:50%; width:44px; height:44px; font-size:1.15rem; font-weight:700;
+        background:#fff; border:1px solid #E5E7EB; box-shadow:0 6px 18px rgba(0,0,0,.28); padding:0; }
     </style>
     """,
     unsafe_allow_html=True,
@@ -121,8 +156,12 @@ st.markdown(
 # Inject the (once-embedded) photo background-image classes
 st.markdown(media.photo_css(), unsafe_allow_html=True)
 
-if "selected_id" not in st.session_state:
-    st.session_state.selected_id = None
+for _k, _v in {
+    "selected_id": None,          # listing shown in the centered modal
+    "last_click_xy": None,        # dedupe repeated last_object_clicked values
+    "view": {"center": list(config.MAP_CENTER), "zoom": config.DEFAULT_ZOOM},
+}.items():
+    st.session_state.setdefault(_k, _v)
 
 
 @cache_data
@@ -139,21 +178,34 @@ def _size_bounds():
 # Sidebar filters
 # ---------------------------------------------------------------------------
 st.sidebar.markdown("## 🔎 Filters")
-sel_cities = st.sidebar.multiselect("City", options=config.CITIES, default=config.CITIES)
 
-district_opts = [d for d in config.districts()
-                 if not sel_cities or config.DISTRICT_PROFILE[d]["city"] in sel_cities]
-sel_districts = st.sidebar.multiselect(
-    "District", options=district_opts, default=district_opts,
-    format_func=lambda d: f"{d} ({config.DISTRICT_PROFILE[d]['name_zh']})",
-)
+# --- City (checkboxes) ---
+st.sidebar.markdown("**City**")
+sel_cities = [c for c in config.CITIES
+              if st.sidebar.checkbox(c, value=True, key=f"city_{c}")]
+
+# --- District (checkboxes, 2 columns, grouped under the selected cities) ---
+st.sidebar.markdown("**District**")
+sel_districts = []
+_dcols = st.sidebar.columns(2)
+_i = 0
+for d in config.districts():
+    if config.DISTRICT_PROFILE[d]["city"] not in sel_cities:
+        continue
+    if _dcols[_i % 2].checkbox(d, value=True, key=f"dist_{d}"):
+        sel_districts.append(d)
+    _i += 1
 
 pmin, pmax = _price_bounds()
 price_range = st.sidebar.slider("Monthly rent (NT$)", min_value=pmin, max_value=pmax,
                                 value=(pmin, pmax), step=500, format="%d")
 
-sel_rooms = st.sidebar.multiselect("Room type", options=list(config.ROOM_TYPES.keys()),
-                                   default=list(config.ROOM_TYPES.keys()))
+st.sidebar.markdown("**Room type**")
+sel_rooms = []
+_rcols = st.sidebar.columns(3)
+for _j, _r in enumerate(config.ROOM_TYPES.keys()):
+    if _rcols[_j % 3].checkbox(_r, value=True, key=f"room_{_r}"):
+        sel_rooms.append(_r)
 
 smin, smax = _size_bounds()
 size_range = st.sidebar.slider("Size (ping)", min_value=float(smin), max_value=float(smax),
@@ -233,65 +285,103 @@ def price_pin(price: int, band_color: str, is_sel: bool) -> folium.DivIcon:
     return folium.DivIcon(html=html, icon_size=(0, 0), icon_anchor=(0, 0))
 
 
+def modal_card_html(s: dict) -> str:
+    photo = media.photo_data_uri(media.photo_number(int(s["id"]), s["room_type"]))
+    yn = lambda v: "Yes" if v else "No"
+    return (
+        '<div class="listing-modal">'
+        f'<img class="modal-photo" src="{photo}">'
+        '<div class="modal-body">'
+        '<div class="modal-head"><div>'
+        f'<div class="modal-title">{s["room_type"]} · {s["district"]} '
+        f'<span class="modal-zh">{s["district_zh"]} · {s["city"]}</span></div>'
+        f'<div class="modal-addr">📍 {s["address"]}</div></div>'
+        f'<div class="modal-price">NT$ {s["price"]:,}<div class="modal-permo">per month</div></div>'
+        '</div>'
+        '<div class="modal-stats">'
+        f'<div><b>{s["size_ping"]:g}</b><span>ping</span></div>'
+        f'<div><b>{s["unit_price"]:,}</b><span>NT$/ping</span></div>'
+        f'<div><b>{s["mrt_min"]} min</b><span>to MRT</span></div>'
+        f'<div><b>{s["bedrooms"]}/{s["bathrooms"]}</b><span>bed/bath</span></div>'
+        '</div>'
+        '<div class="modal-grid">'
+        f'<div><span>Building</span>{s["building_type"]}</div>'
+        f'<div><span>Floor</span>{s["floor"]}/{s["total_floors"]}</div>'
+        f'<div><span>Renovated</span>{s["renovation_age"]} yr ago</div>'
+        f'<div><span>Elevator / Parking</span>{yn(s["has_elevator"])} / {yn(s["has_parking"])}</div>'
+        f'<div><span>Pets</span>{"Allowed" if s["pet_allowed"] else "Not allowed"}</div>'
+        f'<div><span>Rent subsidy</span>{"Eligible" if s["subsidy_eligible"] else "No"}</div>'
+        '</div>'
+        f'<div class="modal-desc">{s["description"]}</div>'
+        f'<div class="modal-contact">Contact (fake): {s["landlord"]} · {s["phone"]} · '
+        f'listed {s["posted_date"]}</div>'
+        '</div></div>'
+    )
+
+
 col_map, col_list = st.columns([2.05, 1])
 
 with col_map:
-    if selected:
-        center, zoom = [selected["lat"], selected["lon"]], 16
-    else:
-        center, zoom = list(config.MAP_CENTER), config.DEFAULT_ZOOM
-
-    fmap = folium.Map(location=center, zoom_start=zoom, tiles=config.MAP_TILES,
-                      control_scale=True)
+    view = st.session_state.view
+    fmap = folium.Map(location=view["center"], zoom_start=view["zoom"],
+                      tiles=config.MAP_TILES, control_scale=True)
     mrt.add_mrt_layer(fmap)     # Taipei MRT lines (under the listing markers)
     mrt.add_mrt_stations(fmap)  # station dots on top of the lines
     cluster = MarkerCluster(disableClusteringAtZoom=15).add_to(fmap)
 
     for _, row in df.iterrows():
-        is_sel = selected is not None and row["id"] == selected["id"]
+        is_sel = st.session_state.selected_id == row["id"]
         bcolor = config.band_color(row["price_band"])
-        popup_html = (
-            f"<div style='font-family:sans-serif;font-size:12px;min-width:180px'>"
-            f"<b>{row['room_type']} · {row['district']}</b><br>"
-            f"<span style='color:#666'>{row['address']}</span><br>"
-            f"<b style='font-size:14px'>NT$ {row['price']:,}</b> / mo · "
-            f"{row['size_ping']:g} ping<br>"
-            f"🚇 {row['mrt_min']} min to MRT · Floor {row['floor']}/{row['total_floors']}</div>"
-        )
         folium.Marker(
             location=[row["lat"], row["lon"]],
             icon=price_pin(row["price"], bcolor, is_sel),
-            popup=folium.Popup(popup_html, max_width=250),
-            tooltip=f"{row['room_type']} · NT$ {row['price']:,}",
+            tooltip=f"{row['room_type']} · NT$ {row['price']:,} · {row['district']}",
         ).add_to(cluster)
 
-    map_state = st_folium(fmap, width=None, height=630, key="map")
+    map_state = st_folium(
+        fmap, width=None, height=630, key="map",
+        returned_objects=["bounds", "center", "zoom", "last_object_clicked"],
+    )
 
-    clicked = map_state.get("last_object_clicked") if map_state else None
-    if clicked and not df.empty:
-        clat, clon = clicked["lat"], clicked["lng"]
+# Keep the map where the user left it across reruns (so panning doesn't reset)
+if map_state:
+    c, z = map_state.get("center"), map_state.get("zoom")
+    if c and z:
+        st.session_state.view = {"center": [c["lat"], c["lng"]], "zoom": z}
+
+# Click a marker -> open the modal (dedupe the persisted last_object_clicked)
+lc = map_state.get("last_object_clicked") if map_state else None
+if lc and not df.empty:
+    xy = (round(lc["lat"], 6), round(lc["lng"], 6))
+    if xy != st.session_state.last_click_xy:
+        st.session_state.last_click_xy = xy
         df2 = df.copy()
-        df2["_d"] = (df2["lat"] - clat) ** 2 + (df2["lon"] - clon) ** 2
-        nearest = int(df2.sort_values("_d").iloc[0]["id"])
-        if nearest != st.session_state.selected_id:
-            st.session_state.selected_id = nearest
-            _rerun()
+        df2["_d"] = (df2["lat"] - lc["lat"]) ** 2 + (df2["lon"] - lc["lng"]) ** 2
+        st.session_state.selected_id = int(df2.sort_values("_d").iloc[0]["id"])
+        _rerun()
+
+# Listings within the current map viewport (right-hand cards react to panning)
+bounds = map_state.get("bounds") if map_state else None
+in_view = df
+if bounds and bounds.get("_southWest") and not df.empty:
+    sw, ne = bounds["_southWest"], bounds["_northEast"]
+    # ignore the degenerate bounds Leaflet reports before the map is sized
+    if (ne["lat"] - sw["lat"]) > 0.002 and (ne["lng"] - sw["lng"]) > 0.002:
+        in_view = df[(df["lat"] >= sw["lat"]) & (df["lat"] <= ne["lat"]) &
+                     (df["lon"] >= sw["lng"]) & (df["lon"] <= ne["lng"])]
 
 # ---------------------------------------------------------------------------
 # Property cards
 # ---------------------------------------------------------------------------
 with col_list:
-    st.markdown(f"#### {len(df)} stays")
-    if selected and st.button("↩︎ Reset selection"):
-        st.session_state.selected_id = None
-        _rerun()
+    st.markdown(f"#### {len(in_view)} stays in view")
 
     if df.empty:
         st.info("No listings match the current filters. Try widening them.")
+    elif in_view.empty:
+        st.info("No listings in the current map view — pan or zoom out.")
     else:
-        ordered = df.copy()
-        ordered["_sel"] = (ordered["id"] == st.session_state.selected_id).astype(int)
-        ordered = ordered.sort_values(["_sel", "price"], ascending=[False, True])
+        ordered = in_view.sort_values("price")
 
         for _, row in ordered.head(24).iterrows():
             is_sel = row["id"] == st.session_state.selected_id
@@ -325,48 +415,23 @@ with col_list:
                 """,
                 unsafe_allow_html=True,
             )
-            label = "✓ Selected — see details below" if is_sel else "View on map  →"
+            label = "✓ Showing details" if is_sel else "View details  →"
             if st.button(label, key=f"btn_{row['id']}", disabled=bool(is_sel)):
                 st.session_state.selected_id = int(row["id"])
                 _rerun()
 
-        if len(df) > 24:
-            st.caption(f"Showing first 24 of {len(df)} listings — narrow the filters to see more.")
+        if len(in_view) > 24:
+            st.caption(f"Showing first 24 of {len(in_view)} in view — zoom in or filter to narrow.")
 
 # ---------------------------------------------------------------------------
-# Detail panel (hero photo + full info)
+# Centered modal for the selected listing (marker click or card button)
 # ---------------------------------------------------------------------------
 if selected:
-    st.markdown("---")
-    st.subheader(f"🏠 {selected['title']}")
-
-    # KPI row (top-level columns)
-    m1, m2, m3, m4 = st.columns(4)
-    m1.metric("Monthly rent", f"NT$ {selected['price']:,}")
-    m2.metric("Size", f"{selected['size_ping']:g} ping")
-    m3.metric("Rent / ping", f"NT$ {selected['unit_price']:,}")
-    m4.metric("MRT walk", f"{selected['mrt_min']} min")
-
-    # Hero photo + details (top-level columns; no nesting inside)
-    pnum = media.photo_number(int(selected["id"]), selected["room_type"])
-    img_col, txt_col = st.columns([1, 1.6])
-    with img_col:
-        st.markdown(
-            f"<img src='{media.photo_data_uri(pnum)}' "
-            f"style='width:100%;height:210px;object-fit:cover;border-radius:16px'>",
-            unsafe_allow_html=True,
-        )
-    with txt_col:
-        st.markdown(
-            f"**District:** {selected['district']} ({selected['district_zh']}), {selected['city']}  \n"
-            f"**Address:** {selected['address']}  \n"
-            f"**Layout:** {selected['room_type']} · {selected['bedrooms']} bed / {selected['bathrooms']} bath  \n"
-            f"**Building:** {selected['building_type']} · Floor {selected['floor']}/{selected['total_floors']}  \n"
-            f"**Renovated:** {selected['renovation_age']} yr ago · "
-            f"**Elevator:** {'Yes' if selected['has_elevator'] else 'No'} · "
-            f"**Parking:** {'Yes' if selected['has_parking'] else 'No'}  \n"
-            f"**Pets:** {'Allowed' if selected['pet_allowed'] else 'Not allowed'} · "
-            f"**Rent-subsidy eligible:** {'Yes' if selected['subsidy_eligible'] else 'No'}"
-        )
-    st.caption(selected["description"])
-    st.caption(f"Contact (fake): {selected['landlord']} · {selected['phone']} · listed {selected['posted_date']}")
+    # Hidden anchor -> CSS turns the *next* element (this button) into the
+    # floating ✕ close button positioned over the modal.
+    st.markdown('<div id="modal-close-anchor"></div>', unsafe_allow_html=True)
+    if st.button("✕", key="modal_close", help="Close"):
+        st.session_state.selected_id = None
+        _rerun()
+    st.markdown('<div class="modal-backdrop"></div>' + modal_card_html(selected),
+                unsafe_allow_html=True)
