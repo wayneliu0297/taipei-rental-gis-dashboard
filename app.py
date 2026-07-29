@@ -23,7 +23,7 @@ import folium
 from folium.plugins import MarkerCluster
 from streamlit_folium import st_folium
 
-from src import config, database, generate_data, media
+from src import config, database, generate_data, media, mrt
 
 # Build the SQLite database on first run (e.g. fresh clone / Streamlit Cloud,
 # where there is no separate build step). No-op once the file exists.
@@ -100,6 +100,19 @@ st.markdown(
     .stButton button { border-radius:10px; border:1px solid #E5E7EB; color:#111827;
         font-weight:600; font-size:.82rem; background:#fff; }
     .stButton button:hover { border-color:#111827; color:#111827; background:#FAFAFA; }
+
+    /* ---- keep the map pinned while only the listing column scrolls ---- */
+    /* map column (the one holding the Folium iframe) */
+    div[data-testid="column"]:has(iframe) {
+        position: sticky; top: 0.5rem; align-self: flex-start; z-index: 5;
+    }
+    /* listing column = the column right after the map column */
+    div[data-testid="column"]:has(iframe) + div[data-testid="column"] {
+        max-height: 86vh; overflow-y: auto; padding-right: 8px;
+    }
+    div[data-testid="column"]:has(iframe) + div[data-testid="column"]::-webkit-scrollbar { width: 7px; }
+    div[data-testid="column"]:has(iframe) + div[data-testid="column"]::-webkit-scrollbar-thumb {
+        background: #D1D5DB; border-radius: 4px; }
     </style>
     """,
     unsafe_allow_html=True,
@@ -155,8 +168,15 @@ legend_html = "**Price band (NT$/mo)**  \n".replace("$", "&#36;") + "  \n".join(
     for name, _, _, color in config.PRICE_BANDS
 )
 st.sidebar.caption(legend_html, unsafe_allow_html=True)
+
+mrt_legend = "**MRT lines**  \n" + "  \n".join(
+    f"<span class='dot' style='background:{color}'></span>{name}"
+    for name, color in mrt.legend()
+)
+st.sidebar.caption(mrt_legend, unsafe_allow_html=True)
+
 st.sidebar.caption("⚠️ All data is randomly generated for this demo. Photos are royalty-free "
-                   "stock images — no real listings or company data.")
+                   "stock images — no real listings or company data. MRT geometry: open data.")
 
 # ---------------------------------------------------------------------------
 # Query
@@ -223,6 +243,7 @@ with col_map:
 
     fmap = folium.Map(location=center, zoom_start=zoom, tiles=config.MAP_TILES,
                       control_scale=True)
+    mrt.add_mrt_layer(fmap)  # Taipei MRT network (under the listing markers)
     cluster = MarkerCluster(disableClusteringAtZoom=15).add_to(fmap)
 
     for _, row in df.iterrows():
@@ -271,7 +292,7 @@ with col_list:
         ordered["_sel"] = (ordered["id"] == st.session_state.selected_id).astype(int)
         ordered = ordered.sort_values(["_sel", "price"], ascending=[False, True])
 
-        for _, row in ordered.head(40).iterrows():
+        for _, row in ordered.head(24).iterrows():
             is_sel = row["id"] == st.session_state.selected_id
             bcolor = config.band_color(row["price_band"])
             pnum = media.photo_number(int(row["id"]), row["room_type"])
@@ -308,8 +329,8 @@ with col_list:
                 st.session_state.selected_id = int(row["id"])
                 _rerun()
 
-        if len(df) > 40:
-            st.caption(f"Showing first 40 of {len(df)} listings — narrow the filters to see more.")
+        if len(df) > 24:
+            st.caption(f"Showing first 24 of {len(df)} listings — narrow the filters to see more.")
 
 # ---------------------------------------------------------------------------
 # Detail panel (hero photo + full info)

@@ -25,6 +25,10 @@ on a **SQLite** backend.
 
 - **Interactive Folium map** with Airbnb-style **price-pill markers** (white →
   black when selected), marker clustering, and a clean CartoDB Positron basemap.
+- **Taipei MRT network overlay** drawn in the official line colours (Tamsui–Xinyi,
+  Songshan–Xindian, Zhonghe–Xinlu, Bannan, Wenhu).
+- **Pinned map, scrollable listings** — the map stays in view while the property
+  cards scroll in their own pane (Airbnb desktop layout).
 - **220 synthetic listings** across **14 districts** of Taipei City & New Taipei
   City, scattered around real district centroids.
 - **Six live filters** — city, district, monthly rent, room type, unit size, and
@@ -125,6 +129,10 @@ This is a **public portfolio project**, so it ships with **synthetic data only**
   no attribution required) and are illustrative, not pictures of real units.
 - Rent figures are indicative and reflect a managed-rental price band, not the
   current open market.
+
+**Credits:** Taipei MRT line geometry is derived from the open-source
+[`leoluyi/taipei_mrt`](https://github.com/leoluyi/taipei_mrt) dataset (public
+route data). Basemap © OpenStreetMap contributors, © CARTO.
 
 ---
 
