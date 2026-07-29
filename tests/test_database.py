@@ -49,6 +49,12 @@ def test_filter_by_mrt(db):
     assert (df["mrt_min"] <= 5).all()
 
 
+def test_filter_by_status(db):
+    df = database.query_listings(statuses=["Available"], db_path=db)
+    assert (df["status"] == "Available").all()
+    assert len(df) > 0
+
+
 def test_combined_filters(db):
     df = database.query_listings(
         cities=["Taipei City"], room_types=["2BR", "3BR"],

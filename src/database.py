@@ -42,6 +42,7 @@ def query_listings(
     room_types=None,
     size_range=None,
     max_mrt_min=None,
+    statuses=None,
     db_path=None,
 ) -> pd.DataFrame:
     """Return listings matching the given filters, ordered by price ascending.
@@ -68,6 +69,9 @@ def query_listings(
     if max_mrt_min is not None:
         clauses.append("mrt_min <= ?")
         params.append(max_mrt_min)
+    if statuses:
+        clauses.append(f"status IN ({','.join('?' for _ in statuses)})")
+        params.extend(statuses)
 
     where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
     sql = f"SELECT * FROM listings {where} ORDER BY price ASC"

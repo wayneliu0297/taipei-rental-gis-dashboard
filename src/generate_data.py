@@ -19,7 +19,7 @@ except ImportError:  # pragma: no cover - direct execution fallback
     import config
 
 SEED = 42
-N_LISTINGS = 220
+N_LISTINGS = 1000
 
 FIRST_NAMES = ["Chen", "Lin", "Huang", "Chang", "Lee", "Wang", "Wu", "Liu", "Tsai", "Yang", "Cheng", "Hsu"]
 
@@ -85,6 +85,12 @@ def _make_listing(idx: int, rng: random.Random) -> dict:
     walk = f"{mrt_min} min walk to MRT"
     description = f"{room_type} · {size:g} ping in {district}. {walk}. " + ", ".join(features) + "."
 
+    # Occupancy: ~80% of the managed units are currently rented.
+    status = "Rented" if rng.random() < 0.80 else "Available"
+    # Years left on the company's sub-lease contract with the property owner
+    # (avg ~8, clamped to 5..12). Company-facing only.
+    owner_contract_years_left = round(min(12.0, max(5.0, rng.gauss(8, 1.7))), 1)
+
     posted = date(2026, 7, 24) - timedelta(days=rng.randint(0, 75))
 
     return {
@@ -115,6 +121,9 @@ def _make_listing(idx: int, rng: random.Random) -> dict:
         "pet_allowed": int(rng.random() < 0.6),
         "subsidy_eligible": int(rng.random() < 0.8),
         "listing_type": "Whole unit" if room_type != "Studio" else "Studio suite",
+        "status": status,
+        "owner_contract_years_left": owner_contract_years_left,
+        "features": "|".join(features),
         "landlord": f"Mr./Ms. {rng.choice(FIRST_NAMES)}",
         "phone": f"09{rng.randint(10, 89)}-{rng.randint(100, 999)}-{rng.randint(100, 999)}",
         "posted_date": posted.isoformat(),
@@ -151,6 +160,9 @@ CREATE TABLE listings (
     pet_allowed     INTEGER,
     subsidy_eligible INTEGER,
     listing_type    TEXT,
+    status          TEXT,
+    owner_contract_years_left REAL,
+    features        TEXT,
     landlord        TEXT,
     phone           TEXT,
     posted_date     TEXT,

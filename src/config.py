@@ -84,6 +84,19 @@ PRICE_BANDS = [
 ]
 SELECTED_COLOR = "#DC2626"  # red highlight for the selected listing
 
+# ---------------------------------------------------------------------------
+# Occupancy status — colours the map markers
+#   Rented (已出租)    -> green   (unit is currently let)
+#   Available (待租中) -> amber   (open for a tenant to rent now)
+# ---------------------------------------------------------------------------
+STATUSES = ["Available", "Rented"]
+STATUS_COLOR = {"Rented": "#059669", "Available": "#F59E0B"}
+STATUS_ZH = {"Rented": "已出租", "Available": "待租中"}
+
+
+def status_color(status: str) -> str:
+    return STATUS_COLOR.get(status, "#6B7280")
+
 FEATURE_POOL = [
     "Newly renovated", "Bright & airy", "Quiet street", "Fully furnished",
     "Washer & dryer", "Fibre internet", "Rooftop access", "Balcony",

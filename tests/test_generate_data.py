@@ -45,6 +45,19 @@ def test_no_real_address_leakage():
         assert r["phone"].startswith("09")
 
 
+def test_new_fields_present_and_valid():
+    for r in generate_data.generate(200):
+        assert r["status"] in ("Available", "Rented")
+        assert 5.0 <= r["owner_contract_years_left"] <= 12.0
+        assert r["features"] and "|" in r["features"] or r["features"]
+
+
+def test_occupancy_rate_about_80pct():
+    rows = generate_data.generate(1000)
+    rented = sum(r["status"] == "Rented" for r in rows)
+    assert 0.74 < rented / len(rows) < 0.86  # ~80% occupancy
+
+
 def test_build_database(tmp_path):
     db = tmp_path / "t.db"
     n = generate_data.build_database(n=40, db_path=db)

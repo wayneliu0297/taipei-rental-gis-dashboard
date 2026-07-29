@@ -143,8 +143,30 @@ st.markdown(
     .modal-grid { display:grid; grid-template-columns:1fr 1fr; gap:9px 16px; font-size:.82rem; color:#374151; }
     .modal-grid > div span { display:block; color:#9CA3AF; font-size:.66rem;
         text-transform:uppercase; letter-spacing:.03em; }
-    .modal-desc { margin-top:14px; font-size:.82rem; color:#4B5563; }
+    .modal-desc { margin-top:14px; font-size:.82rem; color:#4B5563; line-height:1.5; }
     .modal-contact { margin-top:8px; font-size:.72rem; color:#9CA3AF; }
+    .modal-status { position:absolute; top:12px; left:14px; color:#fff; font-size:.68rem;
+        font-weight:700; padding:3px 11px; border-radius:20px; box-shadow:0 1px 4px rgba(0,0,0,.3); }
+
+    /* map loading spinner — shown while a zoom/pan rerun is in flight.
+       Lift its element-container above the map iframe (sibling containers
+       otherwise stack the later iframe on top). */
+    .element-container:has(#map-spinner) { position:relative; z-index:600; }
+    #map-spinner { display:none; position:absolute; top:0; left:0; right:0; height:630px;
+        align-items:center; justify-content:center; z-index:600;
+        background:rgba(255,255,255,.45); pointer-events:none; border-radius:8px; }
+    #map-spinner.on { display:flex; }
+    .map-spinner-dot { width:46px; height:46px; border:5px solid rgba(17,24,39,.15);
+        border-top-color:#111827; border-radius:50%; animation:mspin .8s linear infinite; }
+    @keyframes mspin { to { transform:rotate(360deg); } }
+
+    /* compact sidebar so every filter is visible at a glance */
+    section[data-testid="stSidebar"] .stMarkdown p,
+    section[data-testid="stSidebar"] label,
+    section[data-testid="stSidebar"] .stRadio div { font-size:.76rem; }
+    section[data-testid="stSidebar"] h2 { font-size:1rem; margin-bottom:.2rem; }
+    section[data-testid="stSidebar"] [data-testid="stVerticalBlock"] { gap:.25rem; }
+    section[data-testid="stSidebar"] [data-testid="stCaptionContainer"] p { font-size:.72rem; }
 
     /* the invisible JS-injector component takes no space */
     iframe[title="st.iframe"] { display:block; }
@@ -174,6 +196,20 @@ def _size_bounds():
 # Sidebar filters
 # ---------------------------------------------------------------------------
 st.sidebar.markdown("## 🔎 Filters")
+
+# --- View mode: what a renter sees vs. internal management view ---
+view_mode = st.sidebar.radio(
+    "👁 View mode", ["Tenant", "Company"],
+    help="Tenant = what renters see. Company = adds internal management info "
+         "(owner-contract time left).",
+)
+
+# --- Status (checkboxes) — colours the map ---
+st.sidebar.markdown("**Status**")
+_scols = st.sidebar.columns(2)
+sel_statuses = [s for i, s in enumerate(config.STATUSES)
+                if _scols[i % 2].checkbox(f"{s} ({config.STATUS_ZH[s]})", value=True,
+                                          key=f"status_{s}")]
 
 # --- City (checkboxes) ---
 st.sidebar.markdown("**City**")
@@ -208,12 +244,11 @@ size_range = st.sidebar.slider("Size (ping)", min_value=float(smin), max_value=f
 max_mrt = st.sidebar.slider("Max walk to MRT (min)", min_value=1, max_value=20, value=20)
 
 st.sidebar.markdown("---")
-_band_label = {"Budget": "under 20k", "Standard": "20–32k", "Premium": "32k+"}
-legend_html = "**Price band (NT$/mo)**  \n".replace("$", "&#36;") + "  \n".join(
-    f"<span class='dot' style='background:{color}'></span>{name} ({_band_label[name]})"
-    for name, _, _, color in config.PRICE_BANDS
+status_legend = "**Map colour — status**  \n" + "  \n".join(
+    f"<span class='dot' style='background:{config.STATUS_COLOR[s]}'></span>{s} ({config.STATUS_ZH[s]})"
+    for s in ["Rented", "Available"]
 )
-st.sidebar.caption(legend_html, unsafe_allow_html=True)
+st.sidebar.caption(status_legend, unsafe_allow_html=True)
 
 mrt_legend = "**MRT lines**  \n" + "  \n".join(
     f"<span class='dot' style='background:{color}'></span>{name}"
@@ -231,6 +266,7 @@ df = database.query_listings(
     cities=sel_cities or None, districts=sel_districts or None, price_range=price_range,
     room_types=sel_rooms or None, size_range=size_range,
     max_mrt_min=max_mrt if max_mrt < 20 else None,
+    statuses=sel_statuses or None,
 )
 
 # ---------------------------------------------------------------------------
@@ -270,13 +306,27 @@ def price_pin(price: int, band_color: str, lid=None) -> folium.DivIcon:
     return folium.DivIcon(html=html, icon_size=(0, 0), icon_anchor=(0, 0))
 
 
-def modal_card_html(s: dict) -> str:
+def modal_card_html(s: dict, view_mode: str = "Tenant") -> str:
     pnum = media.photo_number(int(s["id"]), s["room_type"])
     yn = lambda v: "Yes" if v else "No"
+    status = s["status"]
+    scolor = config.status_color(status)
+    badge = (f'<span class="modal-status" style="background:{scolor}">'
+             f'{status} · {config.STATUS_ZH.get(status, "")}</span>')
+    # Bolded description: emphasise the MRT walk + each highlight.
+    feats = str(s["features"]).split("|") if s["features"] else []
+    desc = (f'{s["room_type"]} · {s["size_ping"]:g} ping in {s["district"]}. '
+            f'<b>{s["mrt_min"]} min walk to MRT</b>. '
+            + ", ".join(f"<b>{f}</b>" for f in feats) + ".")
+    # Company-only management row
+    company = ""
+    if view_mode == "Company":
+        company = (f'<div><span>Owner contract left</span>'
+                   f'{s["owner_contract_years_left"]:g} yr</div>')
     return (
         f'<div class="listing-modal" id="lm-{int(s["id"])}">'
         '<span class="modal-close-x">✕</span>'
-        f'<div class="modal-photo listing-photo-{pnum}"></div>'
+        f'<div class="modal-photo listing-photo-{pnum}">{badge}</div>'
         '<div class="modal-body">'
         '<div class="modal-head"><div>'
         f'<div class="modal-title">{s["room_type"]} · {s["district"]} '
@@ -297,8 +347,9 @@ def modal_card_html(s: dict) -> str:
         f'<div><span>Elevator / Parking</span>{yn(s["has_elevator"])} / {yn(s["has_parking"])}</div>'
         f'<div><span>Pets</span>{"Allowed" if s["pet_allowed"] else "Not allowed"}</div>'
         f'<div><span>Rent subsidy</span>{"Eligible" if s["subsidy_eligible"] else "No"}</div>'
+        f'{company}'
         '</div>'
-        f'<div class="modal-desc">{s["description"]}</div>'
+        f'<div class="modal-desc">{desc}</div>'
         f'<div class="modal-contact">Contact (fake): {s["landlord"]} · {s["phone"]} · '
         f'listed {s["posted_date"]}</div>'
         '</div></div>'
@@ -334,6 +385,8 @@ col_map, col_list = st.columns([2.05, 1])
 
 with col_map:
     view = st.session_state.view
+    st.markdown('<div id="map-spinner"><div class="map-spinner-dot"></div></div>',
+                unsafe_allow_html=True)
     # prefer_canvas renders the MRT lines + 111 station dots on a single canvas
     # instead of hundreds of SVG nodes — far cheaper to (re)draw on each rerun.
     fmap = folium.Map(location=view["center"], zoom_start=view["zoom"],
@@ -344,8 +397,8 @@ with col_map:
     for _, row in df.iterrows():
         folium.Marker(
             location=[row["lat"], row["lon"]],
-            icon=price_pin(row["price"], config.band_color(row["price_band"]), lid=int(row["id"])),
-            tooltip=f"{row['room_type']} · NT$ {row['price']:,} · {row['district']}",
+            icon=price_pin(row["price"], config.status_color(row["status"]), lid=int(row["id"])),
+            tooltip=f"{row['room_type']} · NT$ {row['price']:,} · {row['district']} · {row['status']}",
         ).add_to(cluster)
     # Only bounds/center/zoom are watched -> panning refilters the cards and
     # preserves the view. Marker clicks open the modal client-side (no rerun).
@@ -389,10 +442,17 @@ with col_list:
 # clicks to show them. Opening/closing is 100% client-side, so it never reruns
 # Streamlit or reloads the map.
 # ---------------------------------------------------------------------------
-# Render a modal for EVERY listing (any visible marker must have one to open).
+# Only render the modals that can actually be opened right now: the visible
+# cards always, plus every in-view marker once the map is zoomed in enough that
+# markers un-cluster (so a marker click always finds its modal). This keeps the
+# hidden-modal count small even with 1000 listings.
+if st.session_state.view["zoom"] >= 15:
+    modal_rows = in_view
+else:
+    modal_rows = in_view.sort_values("price").head(24)
 st.markdown(
     '<div class="modal-backdrop" id="lm-backdrop"></div>'
-    + "".join(modal_card_html(r) for _, r in df.iterrows()),
+    + "".join(modal_card_html(r, view_mode) for _, r in modal_rows.iterrows()),
     unsafe_allow_html=True,
 )
 
@@ -422,6 +482,28 @@ components.html(
         x.onclick = function (e) {{ e.stopPropagation(); window.parent.__hideLM(); }};
       }});
       doc.onkeydown = function (e) {{ if (e.key === 'Escape') window.parent.__hideLM(); }};
+
+      /* Map loading spinner: this injector runs after every rerun, so a rerun
+         just finished -> hide it; then show it again when the map next moves. */
+      var sp = doc.getElementById('map-spinner'); if (sp) sp.classList.remove('on');
+      var mapIfr = null;
+      doc.querySelectorAll('iframe').forEach(function (f) {{
+        try {{ if (Object.keys(f.contentWindow).some(function (k) {{ return k.indexOf('map_') === 0; }})) mapIfr = f; }} catch (e) {{}}
+      }});
+      if (mapIfr) {{
+        try {{
+          var mw = mapIfr.contentWindow;
+          var mk = Object.keys(mw).find(function (k) {{ return k.indexOf('map_') === 0; }});
+          var showSp = function () {{
+            var s = doc.getElementById('map-spinner'); if (!s) return;
+            s.classList.add('on');
+            clearTimeout(window.parent.__spTO);
+            window.parent.__spTO = setTimeout(function () {{ s.classList.remove('on'); }}, 5000);
+          }};
+          mw[mk].off('movestart zoomstart', showSp);
+          mw[mk].on('movestart zoomstart', showSp);
+        }} catch (e) {{}}
+      }}
     }})();
     </script>
     """,
