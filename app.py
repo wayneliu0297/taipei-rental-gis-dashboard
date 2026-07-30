@@ -40,7 +40,7 @@ if not config.DB_PATH.exists():
 
 cache_data = getattr(st, "cache_data", st.cache)  # Streamlit 1.12 .. latest
 
-st.set_page_config(page_title="Taipei Rental GIS Dashboard", page_icon="🏠", layout="wide")
+st.set_page_config(page_title="Taipei Rental GIS Dashboard", page_icon="🗺️", layout="wide")
 
 CARD_CAP = 24  # cards rendered in the right-hand column at any one time
 
@@ -330,8 +330,13 @@ LOGO_SVG = (
     '<stop offset="0" stop-color="#FF8A63"/><stop offset="1" stop-color="#FB5A6A"/>'
     '</linearGradient></defs>'
     '<rect width="38" height="38" rx="11" fill="url(#lg)"/>'
-    '<path d="M19 7.5c-4.5 0-8 3.4-8 7.8 0 5.5 8 15.2 8 15.2s8-9.7 8-15.2c0-4.4-3.5-7.8-8-7.8z" fill="#fff"/>'
-    '<circle cx="19" cy="15.1" r="3" fill="#FB5A6A"/>'
+    # folded map (unmistakably a map, not a house)
+    '<path d="M7 13.2 15 10.4 23 13.2 31 10.4 31 24.8 23 27.6 15 24.8 7 27.6Z" fill="#fff"/>'
+    # fold creases
+    '<path d="M15 10.4V24.8M23 13.2V27.6" stroke="#FB5A6A" stroke-width="1.1" stroke-linecap="round" opacity=".5"/>'
+    # location pin dropped on the map
+    '<path d="M19 13.5c-1.93 0-3.5 1.53-3.5 3.4 0 2.55 3.5 5.7 3.5 5.7s3.5-3.15 3.5-5.7c0-1.87-1.57-3.4-3.5-3.4z" fill="#FB5A6A"/>'
+    '<circle cx="19" cy="16.9" r="1.2" fill="#fff"/>'
     '</svg>'
 )
 
