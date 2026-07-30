@@ -40,7 +40,7 @@ if not config.DB_PATH.exists():
 
 cache_data = getattr(st, "cache_data", st.cache)  # Streamlit 1.12 .. latest
 
-st.set_page_config(page_title="Taipei Rental GIS Dashboard", page_icon="🏙️", layout="wide")
+st.set_page_config(page_title="Taipei Rental GIS Dashboard", page_icon="🏠", layout="wide")
 
 CARD_CAP = 24  # cards rendered in the right-hand column at any one time
 
@@ -52,29 +52,61 @@ st.markdown(
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=Noto+Sans+TC:wght@400;500;700&display=swap');
 
+    :root {
+        --brand: #FB5A6A;        /* coral — house-hunting warmth (Airbnb family) */
+        --brand-2: #FF8A63;       /* peach, for gradients */
+        --brand-deep: #E23E52;    /* hover / pressed */
+        --brand-tint: #FFF1F2;    /* soft coral wash */
+        --ink: #0F172A;           /* primary text */
+        --muted: #64748B;         /* secondary text */
+        --faint: #94A3B8;         /* tertiary text */
+        --line: #ECECEF;          /* hairlines */
+        --surface: #F8F8FB;       /* tiles / chips */
+        --avail: #F59E0B;         /* Available (待租中) — amber (= config.STATUS_COLOR) */
+        --rented: #059669;        /* Rented (已出租) — green  (= config.STATUS_COLOR) */
+    }
+
     html, body, [class*="css"] {
         font-family: 'Inter', 'Noto Sans TC', -apple-system, BlinkMacSystemFont, sans-serif;
     }
+    .stApp { background:
+        radial-gradient(1200px 480px at 88% -8%, #FFF4F1 0%, rgba(255,244,241,0) 60%),
+        radial-gradient(900px 420px at 0% -6%, #F1F5FF 0%, rgba(241,245,255,0) 55%),
+        #FFFFFF; }
     .block-container { padding-top: 1.1rem; padding-bottom: 1rem; max-width: 1500px; }
     header[data-testid="stHeader"] { background: transparent; }
 
     /* ---- top brand bar ---- */
     .topbar { display:flex; justify-content:space-between; align-items:center;
-        padding:2px 2px 13px; border-bottom:1px solid #EAECF0; margin-bottom:14px; }
+        padding:2px 2px 13px; border-bottom:1px solid var(--line); margin-bottom:14px; }
     .brand { display:flex; align-items:center; gap:11px; }
-    .brand-name { font-size:1.3rem; font-weight:800; color:#0F172A; letter-spacing:-.02em; }
-    .brand-name .thin { color:#94A3B8; font-weight:600; }
-    .brand-sub { font-size:.68rem; color:#94A3B8; font-weight:600; letter-spacing:.06em;
-        text-transform:uppercase; margin-top:1px; }
-    .brand-right { font-size:.78rem; color:#64748B; font-weight:600; text-align:right; line-height:1.45; }
-    .brand-right b { color:#0F172A; }
+    .brand-name { font-size:1.3rem; font-weight:800; color:var(--ink); letter-spacing:-.02em; }
+    .brand-name .thin { color:var(--faint); font-weight:600; }
+    .brand-sub { font-size:.68rem; color:var(--brand); font-weight:700; letter-spacing:.09em;
+        text-transform:uppercase; margin-top:2px; }
+    .brand-right { font-size:.78rem; color:var(--muted); font-weight:600; text-align:right; line-height:1.5; }
+    .brand-right b { color:var(--ink); }
+    .demo-pill { display:inline-block; background:var(--brand-tint); color:var(--brand-deep);
+        font-size:.62rem; font-weight:700; letter-spacing:.05em; text-transform:uppercase;
+        padding:2px 8px; border-radius:20px; border:1px solid #FBD5DA; margin-bottom:3px; }
 
     /* ---- KPI tiles ---- */
     div[data-testid="metric-container"], div[data-testid="stMetric"] {
-        background:#F8FAFC; border:1px solid #EEF2F7; border-radius:14px;
-        padding:10px 16px 12px; }
-    div[data-testid="stMetricValue"] { font-size:1.22rem; font-weight:800; color:#0F172A; }
-    div[data-testid="stMetricLabel"] { color:#64748B; }
+        background:#fff; border:1px solid var(--line); border-radius:15px;
+        padding:11px 16px 13px; box-shadow:0 1px 2px rgba(15,23,42,.04); }
+    div[data-testid="stMetricValue"] { font-size:1.24rem; font-weight:800; color:var(--ink); }
+    div[data-testid="stMetricLabel"] { color:var(--muted); }
+    /* split "Listings" KPI: Available (amber) / Rented (green) */
+    .kpi-split { background:#fff; border:1px solid var(--line); border-radius:15px;
+        padding:11px 16px 13px; box-shadow:0 1px 2px rgba(15,23,42,.04); }
+    .kpi-split .ks-label { color:var(--muted); font-size:.8rem; font-weight:500;
+        line-height:1.6; margin-bottom:1px; }
+    .kpi-split .ks-val { font-weight:800; font-size:1.24rem; letter-spacing:-.01em;
+        display:flex; align-items:baseline; gap:7px; }
+    .kpi-split .ks-a { color:var(--avail); }
+    .kpi-split .ks-r { color:var(--rented); }
+    .kpi-split .ks-slash { color:#CBD5E1; font-weight:600; }
+    .kpi-split .ks-dot { font-size:.7em; margin-right:2px; }
 
     /* ---- Airbnb-style property cards (generated client-side) ---- */
     .property-card { border-radius:16px; background:#fff; border:1px solid #ECECEC;
@@ -87,8 +119,9 @@ st.markdown(
     .pc-band { position:absolute; top:10px; left:10px; color:#fff; font-size:.64rem;
         font-weight:700; padding:3px 9px; border-radius:20px; letter-spacing:.02em;
         box-shadow:0 1px 3px rgba(0,0,0,.25); }
-    .pc-heart { position:absolute; top:8px; right:10px; color:#fff; font-size:1.05rem;
-        text-shadow:0 1px 3px rgba(0,0,0,.4); }
+    .pc-heart { position:absolute; top:8px; right:10px; color:#fff; font-size:1.1rem;
+        text-shadow:0 1px 3px rgba(0,0,0,.4); transition:color .12s ease, transform .12s ease; }
+    .property-card:hover .pc-heart { color:var(--brand); transform:scale(1.12); }
     .pc-body { padding:11px 14px 13px; }
     .pc-row1 { display:flex; justify-content:space-between; align-items:baseline; gap:8px; }
     .pc-title { font-weight:700; font-size:.93rem; color:#0F172A; }
@@ -116,14 +149,27 @@ st.markdown(
     div[data-testid="column"]:has(iframe) + div[data-testid="column"]::-webkit-scrollbar-thumb {
         background: #D8DEE6; border-radius: 4px; }
 
-    /* ---- centered listing modal (z above the sidebar @ 999991) ---- */
-    .modal-backdrop { display:none; position:fixed; inset:0; background:rgba(15,23,42,.55);
-        z-index:999992; }
-    .listing-modal { display:none; position:fixed; top:50%; left:50%;
-        transform:translate(-50%,-50%);
+    /* ---- centered listing modal (z above the sidebar @ 999991) ----
+       Fade with opacity/pointer-events, NOT display:none. A hard display
+       toggle removes a full-screen fixed layer in one frame, which forces the
+       browser to recomposite the canvas-heavy Leaflet map underneath — that
+       one-frame repaint was the "map flicker" seen on close. Fading keeps the
+       map layer untouched, so close is smooth. */
+    .modal-backdrop { position:fixed; inset:0; background:rgba(15,23,42,.46);
+        z-index:999992; opacity:0; pointer-events:none; will-change:opacity;
+        transition:opacity .17s ease; }
+    .modal-backdrop.lm-open { opacity:1; pointer-events:auto; }
+    .listing-modal { position:fixed; top:50%; left:50%;
+        transform:translate(-50%,-50%) scale(.985);
         width:min(560px,92vw); max-height:88vh; overflow:auto; background:#fff;
-        border-radius:20px; box-shadow:0 24px 70px rgba(0,0,0,.42); z-index:999993; }
-    .listing-modal.lm-open { display:block; }
+        border-radius:20px; box-shadow:0 24px 70px rgba(15,23,42,.34); z-index:999993;
+        opacity:0; pointer-events:none;
+        transition:opacity .17s ease, transform .17s cubic-bezier(.2,.7,.3,1); }
+    .listing-modal.lm-open { opacity:1; pointer-events:auto;
+        transform:translate(-50%,-50%) scale(1); }
+    /* keep the map iframe on its own layer — an overlay fade then never
+       re-rasterises the Leaflet canvas (belt-and-braces against flicker) */
+    div[data-testid="column"]:has(iframe) iframe { transform: translateZ(0); }
     .modal-close-x { position:absolute; top:12px; right:14px; width:34px; height:34px;
         border-radius:50%; background:rgba(255,255,255,.94); color:#0F172A; cursor:pointer;
         display:flex; align-items:center; justify-content:center; font-weight:700;
@@ -150,20 +196,35 @@ st.markdown(
     .modal-contact { margin-top:8px; font-size:.72rem; color:#94A3B8; }
 
     /* ---- sidebar: clean design system, everything at a glance ---- */
-    section[data-testid="stSidebar"] { min-width:330px; }
-    section[data-testid="stSidebar"] .block-container { padding:2.3rem 1.05rem 1.2rem; }
-    section[data-testid="stSidebar"] [data-testid="stVerticalBlock"] { gap:.3rem; }
-    .sb-title { font-size:1.05rem; font-weight:800; color:#0F172A; letter-spacing:-.01em; }
-    .sb-h { font-size:.63rem; font-weight:700; letter-spacing:.1em; text-transform:uppercase;
-        color:#94A3B8; margin:.85rem 0 .35rem; line-height:1.3; }
+    section[data-testid="stSidebar"] { min-width:330px; border-right:1px solid var(--line); }
+    /* Streamlit hard-codes ~96px top padding on the wrapper ABOVE .block-container
+       — that was the big blank at the top of the left column. Pull it up. */
+    section[data-testid="stSidebar"] div:has(> .block-container) { padding-top:1.15rem !important; }
+    section[data-testid="stSidebar"] .block-container { padding:.35rem 1.05rem 1.2rem; }
+    section[data-testid="stSidebar"] [data-testid="stVerticalBlock"] { gap:.34rem; }
+    .sb-title { font-size:1.06rem; font-weight:800; color:var(--ink); letter-spacing:-.01em;
+        display:flex; align-items:center; gap:8px; }
+    .sb-title::before { content:""; width:9px; height:9px; border-radius:3px;
+        background:linear-gradient(135deg,var(--brand-2),var(--brand)); }
+    .sb-h { font-size:.92rem; font-weight:800; letter-spacing:.02em; text-transform:uppercase;
+        color:var(--ink); margin:.95rem 0 .45rem; line-height:1.3; }
     section[data-testid="stSidebar"] [data-testid="stHorizontalBlock"] { gap:.5rem; margin-top:.05rem; }
     section[data-testid="stSidebar"] label,
-    section[data-testid="stSidebar"] .stRadio div,
-    section[data-testid="stSidebar"] .stMarkdown p { font-size:.78rem; }
+    section[data-testid="stSidebar"] .stMarkdown p { font-size:13px; }
+    /* Streamlit renders each checkbox/radio label's TEXT in a nested markdown
+       <div> that keeps its own 16px and ignores the label's font-size — so it
+       must be targeted directly (this is the element the user actually sees). */
+    section[data-testid="stSidebar"] .stCheckbox label div,
+    section[data-testid="stSidebar"] .stCheckbox label p,
+    section[data-testid="stSidebar"] .stRadio label div,
+    section[data-testid="stSidebar"] .stRadio label p { font-size:13px !important; }
     section[data-testid="stSidebar"] label { white-space:nowrap; }
-    section[data-testid="stSidebar"] .stCheckbox { margin-bottom:.04rem; }
+    /* scale the checkbox box down so it matches the 12px label text */
+    section[data-testid="stSidebar"] .stCheckbox label > span:first-child {
+        transform:scale(.8); transform-origin:left center; }
+    section[data-testid="stSidebar"] .stCheckbox { margin-bottom:.12rem; }
     section[data-testid="stSidebar"] div[role="radiogroup"] { flex-direction:row; gap:1.4rem; }
-    section[data-testid="stSidebar"] .stSlider { padding-bottom:.4rem; }
+    section[data-testid="stSidebar"] .stSlider { padding-bottom:.12rem; }
     section[data-testid="stSidebar"] [data-testid="stCaptionContainer"] p { font-size:.7rem; }
     section[data-testid="stSidebar"] .streamlit-expanderHeader { font-size:.75rem; }
 
@@ -198,11 +259,10 @@ sb.markdown("<div class='sb-h'>View mode 檢視模式</div>", unsafe_allow_html=
 view_mode = sb.radio(" ", ["Tenant", "Company"], key="view_mode")
 
 sb.markdown("<div class='sb-h'>Status 狀態</div>", unsafe_allow_html=True)
-_sc = sb.columns(2)
 sel_statuses = []
-if _sc[0].checkbox("🟡 Available 待租", value=True, key="st_avail"):
+if sb.checkbox("🟡 Available 待租中", value=True, key="st_avail"):
     sel_statuses.append("Available")
-if _sc[1].checkbox("🟢 Rented 已租", value=True, key="st_rented"):
+if sb.checkbox("🟢 Rented 已出租", value=True, key="st_rented"):
     sel_statuses.append("Rented")
 
 sb.markdown("<div class='sb-h'>City 城市</div>", unsafe_allow_html=True)
@@ -267,11 +327,11 @@ df = database.query_listings(
 LOGO_SVG = (
     '<svg width="38" height="38" viewBox="0 0 38 38" xmlns="http://www.w3.org/2000/svg">'
     '<defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1">'
-    '<stop offset="0" stop-color="#0F172A"/><stop offset="1" stop-color="#3B5675"/>'
+    '<stop offset="0" stop-color="#FF8A63"/><stop offset="1" stop-color="#FB5A6A"/>'
     '</linearGradient></defs>'
-    '<rect width="38" height="38" rx="10" fill="url(#lg)"/>'
+    '<rect width="38" height="38" rx="11" fill="url(#lg)"/>'
     '<path d="M19 7.5c-4.5 0-8 3.4-8 7.8 0 5.5 8 15.2 8 15.2s8-9.7 8-15.2c0-4.4-3.5-7.8-8-7.8z" fill="#fff"/>'
-    '<circle cx="19" cy="15.1" r="3" fill="#0F172A"/>'
+    '<circle cx="19" cy="15.1" r="3" fill="#FB5A6A"/>'
     '</svg>'
 )
 
@@ -281,14 +341,26 @@ st.markdown(
     "<div class='brand-name'>Taipei Rental GIS <span class='thin'>Dashboard</span></div>"
     "<div class='brand-sub'>Greater Taipei · interactive rental map</div>"
     "</div></div>"
-    "<div class='brand-right'>Synthetic demo data<br>"
+    "<div class='brand-right'><span class='demo-pill'>Synthetic demo</span><br>"
     "Data-Driven Portfolio · <b>Wayne Liu</b></div>"
     "</div>",
     unsafe_allow_html=True,
 )
 
+n_avail = int((df["status"] == "Available").sum()) if not df.empty else 0
+n_rented = int((df["status"] == "Rented").sum()) if not df.empty else 0
+
 k1, k2, k3, k4 = st.columns(4)
-k1.metric("Listings shown", f"{len(df)}")
+k1.markdown(
+    "<div class='kpi-split'>"
+    "<div class='ks-label'>Listings · Available / Rented</div>"
+    "<div class='ks-val'>"
+    f"<span class='ks-a'><span class='ks-dot'>●</span>{n_avail}</span>"
+    "<span class='ks-slash'>/</span>"
+    f"<span class='ks-r'><span class='ks-dot'>●</span>{n_rented}</span>"
+    "</div></div>",
+    unsafe_allow_html=True,
+)
 k2.metric("Median rent", f"NT$ {int(df['price'].median()):,}" if not df.empty else "—")
 k3.metric("Avg. size", f"{df['size_ping'].mean():.1f} ping" if not df.empty else "—")
 k4.metric("Avg. MRT walk", f"{df['mrt_min'].mean():.0f} min" if not df.empty else "—")
@@ -299,7 +371,7 @@ st.markdown("")
 # ---------------------------------------------------------------------------
 def price_pin(price: int, dot_color: str, lid: int) -> folium.DivIcon:
     k = f"{price / 1000:.0f}K"
-    html = (f'<div onclick="parent.__showLM({lid})" style="position:absolute;cursor:pointer;'
+    html = (f'<div onclick="event.stopPropagation();parent.__showLM({lid})" style="position:absolute;cursor:pointer;'
             f'background:#fff;color:#0F172A;border:1px solid #E2E8F0;'
             f'transform:translate(-50%,-50%);border-radius:18px;padding:2px 9px;'
             f"font:700 11px/1.35 'Inter',-apple-system,sans-serif;"
@@ -436,13 +508,13 @@ INJECTOR_JS = r"""
     shell.innerHTML = modalHTML(id);
     shell.scrollTop = 0;
     shell.classList.add('lm-open');
-    if (bd) bd.style.display = 'block';
+    if (bd) bd.classList.add('lm-open');
   };
   window.parent.__hideLM = function () {
     var shell = doc.getElementById('lm-shell');
     var bd = doc.getElementById('lm-backdrop');
     if (shell) shell.classList.remove('lm-open');
-    if (bd) bd.style.display = 'none';
+    if (bd) bd.classList.remove('lm-open');
   };
 
   var bd = doc.getElementById('lm-backdrop');
