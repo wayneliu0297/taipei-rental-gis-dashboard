@@ -53,15 +53,20 @@ st.markdown(
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=Noto+Sans+TC:wght@400;500;700&display=swap');
 
     :root {
-        --brand: #FB5A6A;        /* coral — house-hunting warmth (Airbnb family) */
-        --brand-2: #FF8A63;       /* peach, for gradients */
-        --brand-deep: #E23E52;    /* hover / pressed */
-        --brand-tint: #FFF1F2;    /* soft coral wash */
-        --ink: #0F172A;           /* primary text */
-        --muted: #64748B;         /* secondary text */
-        --faint: #94A3B8;         /* tertiary text */
-        --line: #ECECEF;          /* hairlines */
-        --surface: #F8F8FB;       /* tiles / chips */
+        --accent: #FB6E3B;        /* lively coral-orange — selected pills, logo, sliders */
+        --accent-deep: #E85A28;
+        --accent-soft: #FFF1EA;
+        --brand: #111111;        /* black — primary UI (selected pills, accents) */
+        --brand-2: #333333;       /* softer black */
+        --brand-deep: #000000;    /* hover / pressed */
+        --brand-tint: #F2F3F5;    /* neutral chip wash */
+        --ink: #111827;           /* primary text */
+        --muted: #6B7280;         /* secondary text */
+        --faint: #9CA3AF;         /* tertiary text */
+        --line: #E7E8EB;          /* hairlines */
+        --surface: #F4F5F7;       /* tiles / chips / unselected pills */
+        --gold: #F4C430;          /* "極新裝潢 / newly renovated" badge */
+        --gold-bg: #FEF7E0;
         --avail: #F59E0B;         /* Available (待租中) — amber (= config.STATUS_COLOR) */
         --rented: #059669;        /* Rented (已出租) — green  (= config.STATUS_COLOR) */
     }
@@ -69,11 +74,8 @@ st.markdown(
     html, body, [class*="css"] {
         font-family: 'Inter', 'Noto Sans TC', -apple-system, BlinkMacSystemFont, sans-serif;
     }
-    .stApp { background:
-        radial-gradient(1200px 480px at 88% -8%, #FFF4F1 0%, rgba(255,244,241,0) 60%),
-        radial-gradient(900px 420px at 0% -6%, #F1F5FF 0%, rgba(241,245,255,0) 55%),
-        #FFFFFF; }
-    .block-container { padding-top: 1.1rem; padding-bottom: 1rem; max-width: 1500px; }
+    .stApp { background: #FFFFFF; }
+    .block-container { padding: 1.1rem 1.7rem 1rem; max-width: 1560px; }
     header[data-testid="stHeader"] { background: transparent; }
 
     /* ---- top brand bar ---- */
@@ -82,13 +84,13 @@ st.markdown(
     .brand { display:flex; align-items:center; gap:11px; }
     .brand-name { font-size:1.3rem; font-weight:800; color:var(--ink); letter-spacing:-.02em; }
     .brand-name .thin { color:var(--faint); font-weight:600; }
-    .brand-sub { font-size:.68rem; color:var(--brand); font-weight:700; letter-spacing:.09em;
+    .brand-sub { font-size:.68rem; color:var(--muted); font-weight:700; letter-spacing:.11em;
         text-transform:uppercase; margin-top:2px; }
     .brand-right { font-size:.78rem; color:var(--muted); font-weight:600; text-align:right; line-height:1.5; }
     .brand-right b { color:var(--ink); }
-    .demo-pill { display:inline-block; background:var(--brand-tint); color:var(--brand-deep);
+    .demo-pill { display:inline-block; background:var(--accent); color:#fff;
         font-size:.62rem; font-weight:700; letter-spacing:.05em; text-transform:uppercase;
-        padding:2px 8px; border-radius:20px; border:1px solid #FBD5DA; margin-bottom:3px; }
+        padding:2px 9px; border-radius:20px; margin-bottom:3px; }
 
     /* ---- KPI tiles ---- */
     div[data-testid="metric-container"], div[data-testid="stMetric"] {
@@ -108,29 +110,39 @@ st.markdown(
     .kpi-split .ks-slash { color:#CBD5E1; font-weight:600; }
     .kpi-split .ks-dot { font-size:.7em; margin-right:2px; }
 
-    /* ---- Airbnb-style property cards (generated client-side) ---- */
-    .property-card { border-radius:16px; background:#fff; border:1px solid #ECECEC;
-        overflow:hidden; margin-bottom:10px; cursor:pointer;
-        box-shadow:0 1px 2px rgba(15,23,42,.04), 0 8px 20px rgba(15,23,42,.05);
+    /* ---- listing cards (client-generated) — clean text-forward style ---- */
+    .property-card { border-radius:16px; background:#fff; border:1px solid var(--line);
+        overflow:hidden; margin-bottom:12px; cursor:pointer;
+        box-shadow:0 1px 2px rgba(17,17,17,.04), 0 10px 24px rgba(17,17,17,.06);
         transition:transform .12s ease, box-shadow .12s ease; }
-    .property-card:hover { transform:translateY(-2px); box-shadow:0 10px 26px rgba(15,23,42,.12); }
-    .pc-photo { height:150px; background-size:cover; background-position:center;
+    .property-card:hover { transform:translateY(-2px); box-shadow:0 14px 30px rgba(17,17,17,.14); }
+    .pc-photo { height:132px; background-size:cover; background-position:center;
         position:relative; background-color:#F1F5F9; }
-    .pc-band { position:absolute; top:10px; left:10px; color:#fff; font-size:.64rem;
-        font-weight:700; padding:3px 9px; border-radius:20px; letter-spacing:.02em;
-        box-shadow:0 1px 3px rgba(0,0,0,.25); }
-    .pc-heart { position:absolute; top:8px; right:10px; color:#fff; font-size:1.1rem;
-        text-shadow:0 1px 3px rgba(0,0,0,.4); transition:color .12s ease, transform .12s ease; }
-    .property-card:hover .pc-heart { color:var(--brand); transform:scale(1.12); }
-    .pc-body { padding:11px 14px 13px; }
-    .pc-row1 { display:flex; justify-content:space-between; align-items:baseline; gap:8px; }
-    .pc-title { font-weight:700; font-size:.93rem; color:#0F172A; }
-    .pc-price { font-weight:800; font-size:1.0rem; color:#0F172A; white-space:nowrap; }
-    .pc-sub { color:#94A3B8; font-size:.72rem; margin-top:1px; }
-    .pc-addr { color:#64748B; font-size:.74rem; margin:6px 0 8px; }
-    .badge { background:#F5F6F8; color:#334155; padding:2px 8px; border-radius:6px;
-        font-size:.67rem; font-weight:500; margin-right:5px; border:1px solid #ECEFF3;
-        display:inline-block; margin-bottom:4px; }
+    .pc-status { position:absolute; top:10px; left:10px; color:#fff; font-size:.64rem;
+        font-weight:700; padding:3px 9px; border-radius:20px; box-shadow:0 1px 3px rgba(0,0,0,.25); }
+    .pc-heart { position:absolute; top:8px; right:11px; color:#fff; font-size:1.1rem;
+        text-shadow:0 1px 3px rgba(0,0,0,.4); transition:transform .12s ease; }
+    .property-card:hover .pc-heart { color:var(--accent); transform:scale(1.15); }
+    .pc-body { padding:12px 14px 13px; }
+    .pc-top { display:flex; justify-content:space-between; align-items:center; gap:8px; }
+    .pc-top-l { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+    .pc-tag { background:var(--accent); color:#fff; font-size:.66rem; font-weight:700;
+        padding:2px 9px; border-radius:8px; letter-spacing:.02em; }
+    .pc-badge { background:var(--gold-bg); color:#9A7B12; font-size:.62rem; font-weight:700;
+        padding:2px 8px; border-radius:8px; border:1px solid #F3E2A8; white-space:nowrap; }
+    .pc-price { font-weight:800; font-size:1.12rem; color:var(--ink); white-space:nowrap; letter-spacing:-.01em; }
+    .pc-room { font-weight:800; font-size:1.02rem; color:var(--ink); margin:8px 0 2px; }
+    .pc-room-sub { font-weight:500; font-size:.8rem; color:var(--muted); }
+    .pc-addr { color:var(--muted); font-size:.74rem; margin:3px 0 10px; line-height:1.4; }
+    .pc-stats { display:flex; gap:8px; margin-bottom:10px; }
+    .pc-stats > div { flex:1; background:var(--surface); border:1px solid var(--line);
+        border-radius:8px; padding:7px 10px; }
+    .pc-stats span { display:block; font-size:.6rem; color:var(--faint); font-weight:600;
+        text-transform:uppercase; letter-spacing:.04em; }
+    .pc-stats b { font-size:.86rem; color:var(--ink); }
+    .pc-tags { display:flex; flex-wrap:wrap; gap:5px; }
+    .pc-hash { background:var(--surface); color:#374151; font-size:.66rem; font-weight:500;
+        padding:2px 8px; border-radius:8px; border:1px solid var(--line); }
     .dot { height:9px; width:9px; border-radius:50%; display:inline-block; margin-right:6px; }
 
     /* ---- right column: header + client-rendered card list ---- */
@@ -205,26 +217,55 @@ st.markdown(
     .sb-title { font-size:1.06rem; font-weight:800; color:var(--ink); letter-spacing:-.01em;
         display:flex; align-items:center; gap:8px; }
     .sb-title::before { content:""; width:9px; height:9px; border-radius:3px;
-        background:linear-gradient(135deg,var(--brand-2),var(--brand)); }
+        background:var(--accent); }
     .sb-h { font-size:.92rem; font-weight:800; letter-spacing:.02em; text-transform:uppercase;
         color:var(--ink); margin:.95rem 0 .45rem; line-height:1.3; }
+    .sb-h.sb-h-sp { margin-bottom:1rem; }     /* extra gap after Status/City/District/Room */
+    .sb-h.sb-h-tight { margin-bottom:.1rem; } /* tighter gap after View mode */
     section[data-testid="stSidebar"] [data-testid="stHorizontalBlock"] { gap:.5rem; margin-top:.05rem; }
     section[data-testid="stSidebar"] label,
-    section[data-testid="stSidebar"] .stMarkdown p { font-size:13px; }
+    section[data-testid="stSidebar"] .stMarkdown p { font-size:11px; }
     /* Streamlit renders each checkbox/radio label's TEXT in a nested markdown
        <div> that keeps its own 16px and ignores the label's font-size — so it
        must be targeted directly (this is the element the user actually sees). */
     section[data-testid="stSidebar"] .stCheckbox label div,
     section[data-testid="stSidebar"] .stCheckbox label p,
     section[data-testid="stSidebar"] .stRadio label div,
-    section[data-testid="stSidebar"] .stRadio label p { font-size:13px !important; }
+    section[data-testid="stSidebar"] .stRadio label p {
+        font-size:11px !important; line-height:1.15 !important; min-height:0 !important; }
     section[data-testid="stSidebar"] label { white-space:nowrap; }
-    /* scale the checkbox box down so it matches the 12px label text */
-    section[data-testid="stSidebar"] .stCheckbox label > span:first-child {
-        transform:scale(.8); transform-origin:left center; }
-    section[data-testid="stSidebar"] .stCheckbox { margin-bottom:.12rem; }
-    section[data-testid="stSidebar"] div[role="radiogroup"] { flex-direction:row; gap:1.4rem; }
+    /* ---- checkboxes rendered as compact pill toggles (indigo when selected) ---- */
+    section[data-testid="stSidebar"] .stCheckbox > label {
+        display:flex; align-items:center; justify-content:center; gap:3px;
+        background:var(--surface); border:1px solid var(--line); border-radius:6px;
+        padding:2px 6px; line-height:1.15; cursor:pointer;
+        transition:background .12s ease, border-color .12s ease; }
+    section[data-testid="stSidebar"] .stCheckbox > label:hover { border-color:#FBC0A0; }
+    section[data-testid="stSidebar"] .stCheckbox > label > span:first-child { display:none !important; }
+    section[data-testid="stSidebar"] .stCheckbox:has(input:checked) > label {
+        background:var(--accent); border-color:var(--accent); }
+    section[data-testid="stSidebar"] .stCheckbox:has(input:checked) > label div,
+    section[data-testid="stSidebar"] .stCheckbox:has(input:checked) > label p { color:#fff !important; }
+    section[data-testid="stSidebar"] .stCheckbox { margin-bottom:.16rem; }
+    /* ---- Tenant / Company radio → matching segmented pills ---- */
+    section[data-testid="stSidebar"] div[role="radiogroup"] { flex-direction:row; gap:.5rem; }
+    section[data-testid="stSidebar"] div[role="radiogroup"] > label {
+        flex:1; display:flex; align-items:center; justify-content:center;
+        background:var(--surface); border:1px solid var(--line); border-radius:8px;
+        padding:4px 10px; margin:0; cursor:pointer;
+        transition:background .12s ease, border-color .12s ease; }
+    section[data-testid="stSidebar"] div[role="radiogroup"] > label:hover { border-color:#FBC0A0; }
+    section[data-testid="stSidebar"] div[role="radiogroup"] > label > div:first-child { display:none !important; }
+    section[data-testid="stSidebar"] div[role="radiogroup"] > label:has(input:checked) {
+        background:var(--accent); border-color:var(--accent); }
+    section[data-testid="stSidebar"] div[role="radiogroup"] > label:has(input:checked) div,
+    section[data-testid="stSidebar"] div[role="radiogroup"] > label:has(input:checked) p { color:#fff !important; }
     section[data-testid="stSidebar"] .stSlider { padding-bottom:.12rem; }
+    /* SYSTEM ONLINE status footer */
+    .sys-status { display:flex; align-items:center; gap:7px; font-size:.66rem; font-weight:700;
+        letter-spacing:.06em; text-transform:uppercase; color:var(--muted); margin-top:1.1rem; }
+    .sys-status .sys-dot { width:8px; height:8px; border-radius:50%; background:var(--rented);
+        box-shadow:0 0 0 3px rgba(5,150,105,.18); }
     section[data-testid="stSidebar"] [data-testid="stCaptionContainer"] p { font-size:.7rem; }
     section[data-testid="stSidebar"] .streamlit-expanderHeader { font-size:.75rem; }
 
@@ -255,23 +296,25 @@ def _size_bounds():
 sb = st.sidebar
 sb.markdown("<div class='sb-title'>Filters 篩選</div>", unsafe_allow_html=True)
 
-sb.markdown("<div class='sb-h'>View mode 檢視模式</div>", unsafe_allow_html=True)
-view_mode = sb.radio(" ", ["Tenant", "Company"], key="view_mode")
+sb.markdown("<div class='sb-h sb-h-tight'>View mode 檢視模式</div>", unsafe_allow_html=True)
+view_mode = sb.radio(" ", ["Tenant", "Company"], key="view_mode",
+                     format_func=lambda x: {"Tenant": "Tenant 租客", "Company": "Company 公司"}[x])
 
-sb.markdown("<div class='sb-h'>Status 狀態</div>", unsafe_allow_html=True)
+sb.markdown("<div class='sb-h sb-h-sp'>Status 狀態</div>", unsafe_allow_html=True)
+_stc = sb.columns(2)
 sel_statuses = []
-if sb.checkbox("🟡 Available 待租中", value=True, key="st_avail"):
+if _stc[0].checkbox("🟡 Available 待租", value=True, key="st_avail"):
     sel_statuses.append("Available")
-if sb.checkbox("🟢 Rented 已出租", value=True, key="st_rented"):
+if _stc[1].checkbox("🟢 Rented 已租", value=True, key="st_rented"):
     sel_statuses.append("Rented")
 
-sb.markdown("<div class='sb-h'>City 城市</div>", unsafe_allow_html=True)
+sb.markdown("<div class='sb-h sb-h-sp'>City 城市</div>", unsafe_allow_html=True)
 _cityl = {"Taipei City": "Taipei 台北", "New Taipei City": "New Taipei 新北"}
 _cc = sb.columns(2)
 sel_cities = [c for i, c in enumerate(config.CITIES)
               if _cc[i % 2].checkbox(_cityl[c], value=True, key=f"city_{c}")]
 
-sb.markdown("<div class='sb-h'>District 行政區</div>", unsafe_allow_html=True)
+sb.markdown("<div class='sb-h sb-h-sp'>District 行政區</div>", unsafe_allow_html=True)
 sel_districts = []
 _dc = sb.columns(2)
 _di = 0
@@ -288,11 +331,12 @@ pmin, pmax = _price_bounds()
 price_range = sb.slider(" ", min_value=pmin, max_value=pmax, value=(pmin, pmax),
                         step=500, format="%d", key="f_price")
 
-sb.markdown("<div class='sb-h'>Room type 房型</div>", unsafe_allow_html=True)
+sb.markdown("<div class='sb-h sb-h-sp'>Room type 房型</div>", unsafe_allow_html=True)
 sel_rooms = []
+_roomzh = {"Studio": "套房", "1BR": "一房", "2BR": "二房", "3BR": "三房", "4BR+": "四房"}
 _rc = sb.columns(3)
 for _j, _r in enumerate(config.ROOM_TYPES.keys()):
-    if _rc[_j % 3].checkbox(_r, value=True, key=f"room_{_r}"):
+    if _rc[_j % 3].checkbox(f"{_r} {_roomzh.get(_r, '')}", value=True, key=f"room_{_r}"):
         sel_rooms.append(_r)
 
 sb.markdown("<div class='sb-h'>Size 坪數 (ping)</div>", unsafe_allow_html=True)
@@ -321,21 +365,23 @@ df = database.query_listings(
     statuses=sel_statuses or None,
 )
 
+sb.markdown(
+    f"<div class='sys-status'><span class='sys-dot'></span>System online 系統上線 · {len(df)} listings 物件</div>",
+    unsafe_allow_html=True,
+)
+
 # ---------------------------------------------------------------------------
 # Brand header + KPI tiles
 # ---------------------------------------------------------------------------
 LOGO_SVG = (
     '<svg width="38" height="38" viewBox="0 0 38 38" xmlns="http://www.w3.org/2000/svg">'
-    '<defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1">'
-    '<stop offset="0" stop-color="#FF8A63"/><stop offset="1" stop-color="#FB5A6A"/>'
-    '</linearGradient></defs>'
-    '<rect width="38" height="38" rx="11" fill="url(#lg)"/>'
+    '<rect width="38" height="38" rx="11" fill="#FB6E3B"/>'
     # folded map (unmistakably a map, not a house)
     '<path d="M7 13.2 15 10.4 23 13.2 31 10.4 31 24.8 23 27.6 15 24.8 7 27.6Z" fill="#fff"/>'
     # fold creases
-    '<path d="M15 10.4V24.8M23 13.2V27.6" stroke="#FB5A6A" stroke-width="1.1" stroke-linecap="round" opacity=".5"/>'
+    '<path d="M15 10.4V24.8M23 13.2V27.6" stroke="#FB6E3B" stroke-width="1.1" stroke-linecap="round" opacity=".35"/>'
     # location pin dropped on the map
-    '<path d="M19 13.5c-1.93 0-3.5 1.53-3.5 3.4 0 2.55 3.5 5.7 3.5 5.7s3.5-3.15 3.5-5.7c0-1.87-1.57-3.4-3.5-3.4z" fill="#FB5A6A"/>'
+    '<path d="M19 13.5c-1.93 0-3.5 1.53-3.5 3.4 0 2.55 3.5 5.7 3.5 5.7s3.5-3.15 3.5-5.7c0-1.87-1.57-3.4-3.5-3.4z" fill="#FB6E3B"/>'
     '<circle cx="19" cy="16.9" r="1.2" fill="#fff"/>'
     '</svg>'
 )
@@ -358,7 +404,7 @@ n_rented = int((df["status"] == "Rented").sum()) if not df.empty else 0
 k1, k2, k3, k4 = st.columns(4)
 k1.markdown(
     "<div class='kpi-split'>"
-    "<div class='ks-label'>Listings · Available / Rented</div>"
+    "<div class='ks-label'>Listings 物件 · Available / Rented</div>"
     "<div class='ks-val'>"
     f"<span class='ks-a'><span class='ks-dot'>●</span>{n_avail}</span>"
     "<span class='ks-slash'>/</span>"
@@ -366,22 +412,32 @@ k1.markdown(
     "</div></div>",
     unsafe_allow_html=True,
 )
-k2.metric("Median rent", f"NT$ {int(df['price'].median()):,}" if not df.empty else "—")
-k3.metric("Avg. size", f"{df['size_ping'].mean():.1f} ping" if not df.empty else "—")
-k4.metric("Avg. MRT walk", f"{df['mrt_min'].mean():.0f} min" if not df.empty else "—")
+k2.metric("Median rent 中位租金", f"NT$ {int(df['price'].median()):,}" if not df.empty else "—")
+k3.metric("Avg. size 平均坪數", f"{df['size_ping'].mean():.1f} ping" if not df.empty else "—")
+k4.metric("Avg. MRT walk 平均步行", f"{df['mrt_min'].mean():.0f} min" if not df.empty else "—")
 st.markdown("")
 
 # ---------------------------------------------------------------------------
 # Map — pure Leaflet; interactions never rerun Python
 # ---------------------------------------------------------------------------
-def price_pin(price: int, dot_color: str, lid: int) -> folium.DivIcon:
-    k = f"{price / 1000:.0f}K"
-    html = (f'<div onclick="event.stopPropagation();parent.__showLM({lid})" style="position:absolute;cursor:pointer;'
-            f'background:#fff;color:#0F172A;border:1px solid #E2E8F0;'
-            f'transform:translate(-50%,-50%);border-radius:18px;padding:2px 9px;'
-            f"font:700 11px/1.35 'Inter',-apple-system,sans-serif;"
-            f'box-shadow:0 1px 5px rgba(15,23,42,.30);white-space:nowrap;">'
-            f'<span style="color:{dot_color}">●</span> {k}</div>')
+# Colourful, Google-Roadmap-like base (CartoDB Voyager)
+VOYAGER_TILES = "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+VOYAGER_ATTR = ('&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> '
+                '&copy; <a href="https://carto.com/attributions">CARTO</a>')
+
+
+def house_pin(status_color: str, lid: int) -> folium.DivIcon:
+    """Black rounded-square marker with a white house glyph and a small
+    Available/Rented status dot — the interaction/feature is unchanged."""
+    html = (
+        f'<div onclick="event.stopPropagation();parent.__showLM({lid})" '
+        f'style="position:absolute;cursor:pointer;transform:translate(-50%,-50%);'
+        f'filter:drop-shadow(0 2px 3px rgba(0,0,0,.4));">'
+        f'<svg width="30" height="30" viewBox="0 0 30 30" xmlns="http://www.w3.org/2000/svg">'
+        f'<rect x="1.5" y="1.5" width="27" height="27" rx="8.5" fill="#141414"/>'
+        f'<path d="M15 8 L22 13.6 V22 H16.7 V16.9 H13.3 V22 H8 V13.6 Z" fill="#fff"/>'
+        f'<circle cx="24" cy="6" r="3.9" fill="{status_color}" stroke="#fff" stroke-width="1.5"/>'
+        f'</svg></div>')
     return folium.DivIcon(html=html, icon_size=(0, 0), icon_anchor=(0, 0))
 
 
@@ -389,14 +445,15 @@ col_map, col_list = st.columns([2.05, 1])
 
 with col_map:
     fmap = folium.Map(location=list(config.MAP_CENTER), zoom_start=config.DEFAULT_ZOOM,
-                      tiles=config.MAP_TILES, control_scale=True, prefer_canvas=True)
+                      tiles=VOYAGER_TILES, attr=VOYAGER_ATTR,
+                      control_scale=True, prefer_canvas=True)
     mrt.add_mrt_layer(fmap)     # Taipei MRT lines (under the listing markers)
     mrt.add_mrt_stations(fmap)  # station dots on top of the lines
     cluster = MarkerCluster(disableClusteringAtZoom=15).add_to(fmap)
     for r in df.itertuples():
         folium.Marker(
             location=[r.lat, r.lon],
-            icon=price_pin(int(r.price), config.status_color(r.status), int(r.id)),
+            icon=house_pin(config.status_color(r.status), int(r.id)),
             tooltip=f"{r.room_type} · NT$ {r.price:,} · {r.district} · {r.status}",
         ).add_to(cluster)
     # Watch only `all_drawings` (always null here): the component's value never
@@ -406,7 +463,7 @@ with col_map:
 with col_list:
     st.markdown(
         "<div class='stays-head'><span id='stays-count'>Loading…</span></div>"
-        "<div class='stays-sub'>Updates live as you move the map · click a card for details</div>"
+        "<div class='stays-sub'>Updates live as you move the map · click a card for details<br>移動地圖即時更新，點擊卡片查看細節</div>"
         "<div id='cards-list'></div><div id='cards-note'></div>",
         unsafe_allow_html=True,
     )
@@ -452,20 +509,26 @@ INJECTOR_JS = r"""
 
   function cardHTML(id) {
     var s = LISTINGS[id];
-    var badges = [s.ping + ' ping', '🚇 ' + s.mrt + ' min', 'Fl ' + s.fl + '/' + s.tfl];
-    if (s.elev) badges.push('🛗 Elevator');
-    if (s.pet) badges.push('🐾 Pets');
+    // hashtag chips synthesised from the listing's own fields
+    var tags = ['#' + s.mrt + 'min to MRT'];
+    if (s.sub) tags.push('#Rent subsidy 可租補');
+    s.ft.slice(0, 2).forEach(function (f) { tags.push('#' + f); });
+    var badge = (s.ren <= 1) ? '<span class="pc-badge">✨ Newly renovated</span>' : '';
     return '<div class="property-card" data-lid="' + id + '">'
       + '<div class="pc-photo listing-photo-' + s.pn + '">'
-      + '<span class="pc-band" style="background:' + BAND[s.band] + '">' + s.band + '</span>'
+      + '<span class="pc-status" style="background:' + SCOLOR[s.st] + '">' + s.st + ' ' + SZH[s.st] + '</span>'
       + '<span class="pc-heart">♡</span></div>'
-      + '<div class="pc-body"><div class="pc-row1">'
-      + '<span class="pc-title">' + s.rt + ' · ' + s.d + '</span>'
+      + '<div class="pc-body">'
+      + '<div class="pc-top"><div class="pc-top-l">'
+      + '<span class="pc-tag">' + s.d + ' ' + s.dz.replace('區', '') + '</span>' + badge + '</div>'
       + '<span class="pc-price">NT$ ' + money(s.price) + '</span></div>'
-      + '<div class="pc-sub">' + s.dz + ' · ' + s.city + ' · '
-      + '<span style="color:' + SCOLOR[s.st] + '">●</span> ' + s.st + ' ' + SZH[s.st] + '</div>'
+      + '<div class="pc-room">' + s.rt
+      + '<span class="pc-room-sub"> · ' + (s.bed > 0 ? s.bed + ' bed / ' : '') + s.bath + ' bath</span></div>'
       + '<div class="pc-addr">📍 ' + s.addr + '</div>'
-      + '<div>' + badges.map(function (b) { return '<span class="badge">' + b + '</span>'; }).join('') + '</div>'
+      + '<div class="pc-stats">'
+      + '<div><span>Size 空間</span><b>' + s.ping + ' ping 坪</b></div>'
+      + '<div><span>Walk 步行</span><b>' + s.mrt + ' min</b></div></div>'
+      + '<div class="pc-tags">' + tags.map(function (t) { return '<span class="pc-hash">' + t + '</span>'; }).join('') + '</div>'
       + '</div></div>';
   }
 
