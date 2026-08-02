@@ -6,7 +6,7 @@ map pin to fly to it and inspect the details. Built with **Streamlit + Folium**
 on a **SQLite** backend.
 
 [![CI](https://github.com/wayneliu0297/taipei-rental-gis-dashboard/actions/workflows/ci.yml/badge.svg)](https://github.com/wayneliu0297/taipei-rental-gis-dashboard/actions/workflows/ci.yml)
-[![Live Demo](https://img.shields.io/badge/Live%20Demo-Streamlit-FF4B4B?logo=streamlit&logoColor=white)](https://taipei-rental-gis-dashboard.streamlit.app)
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-Streamlit-FF4B4B?logo=streamlit&logoColor=white)](https://taipei-rental-gis-dashboard-ngtfxp5cvwa4cenpvpvuna.streamlit.app)
 ![Python](https://img.shields.io/badge/Python-3.9%2B-blue?logo=python&logoColor=white)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
@@ -17,7 +17,7 @@ on a **SQLite** backend.
 
 ![Dashboard screenshot](assets/screenshot.jpg)
 
-**▶ Live demo:** https://taipei-rental-gis-dashboard.streamlit.app
+**▶ Live demo:** https://taipei-rental-gis-dashboard-ngtfxp5cvwa4cenpvpvuna.streamlit.app
 
 ---
 

@@ -152,11 +152,12 @@ st.markdown(
     .cards-empty { background:#F8FAFC; border:1px solid #EEF2F7; border-radius:12px;
         padding:16px; font-size:.84rem; color:#475569; }
 
-    /* ---- keep the map pinned while only the listing column scrolls ---- */
+    /* ---- keep the map pinned (sticky) while the listings column scrolls ---- */
     div[data-testid="column"]:has(iframe) {
-        position: sticky; top: 0.5rem; align-self: flex-start; z-index: 5; }
+        position: sticky !important; top: 1rem;
+        align-self: flex-start; height: fit-content; z-index: 5; }
     div[data-testid="column"]:has(iframe) + div[data-testid="column"] {
-        max-height: 86vh; overflow-y: auto; padding-right: 8px; }
+        max-height: 88vh; overflow-y: auto; padding-right: 8px; }
     div[data-testid="column"]:has(iframe) + div[data-testid="column"]::-webkit-scrollbar { width: 7px; }
     div[data-testid="column"]:has(iframe) + div[data-testid="column"]::-webkit-scrollbar-thumb {
         background: #D8DEE6; border-radius: 4px; }
