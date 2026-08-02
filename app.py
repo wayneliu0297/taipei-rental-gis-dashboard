@@ -152,14 +152,19 @@ st.markdown(
     .cards-empty { background:#F8FAFC; border:1px solid #EEF2F7; border-radius:12px;
         padding:16px; font-size:.84rem; color:#475569; }
 
-    /* ---- keep the map pinned (sticky) while the listings column scrolls ---- */
-    div[data-testid="column"]:has(iframe) {
+    /* ---- keep the map pinned (sticky) while the listings column scrolls ----
+       Streamlit 1.12 uses data-testid "column"; newer Streamlit (deployed)
+       renames it "stColumn" — must match BOTH or the fix silently no-ops live. */
+    div:is([data-testid="column"],[data-testid="stColumn"]):has(iframe) {
         position: sticky !important; top: 1rem;
         align-self: flex-start; height: fit-content; z-index: 5; }
-    div[data-testid="column"]:has(iframe) + div[data-testid="column"] {
+    div:is([data-testid="column"],[data-testid="stColumn"]):has(iframe)
+        + div:is([data-testid="column"],[data-testid="stColumn"]) {
         max-height: 88vh; overflow-y: auto; padding-right: 8px; }
-    div[data-testid="column"]:has(iframe) + div[data-testid="column"]::-webkit-scrollbar { width: 7px; }
-    div[data-testid="column"]:has(iframe) + div[data-testid="column"]::-webkit-scrollbar-thumb {
+    div:is([data-testid="column"],[data-testid="stColumn"]):has(iframe)
+        + div:is([data-testid="column"],[data-testid="stColumn"])::-webkit-scrollbar { width: 7px; }
+    div:is([data-testid="column"],[data-testid="stColumn"]):has(iframe)
+        + div:is([data-testid="column"],[data-testid="stColumn"])::-webkit-scrollbar-thumb {
         background: #D8DEE6; border-radius: 4px; }
 
     /* ---- centered listing modal (z above the sidebar @ 999991) ----
@@ -182,7 +187,7 @@ st.markdown(
         transform:translate(-50%,-50%) scale(1); }
     /* keep the map iframe on its own layer — an overlay fade then never
        re-rasterises the Leaflet canvas (belt-and-braces against flicker) */
-    div[data-testid="column"]:has(iframe) iframe { transform: translateZ(0); }
+    div:is([data-testid="column"],[data-testid="stColumn"]):has(iframe) iframe { transform: translateZ(0); }
     .modal-close-x { position:absolute; top:12px; right:14px; width:34px; height:34px;
         border-radius:50%; background:rgba(255,255,255,.94); color:#0F172A; cursor:pointer;
         display:flex; align-items:center; justify-content:center; font-weight:700;
